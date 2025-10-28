@@ -229,6 +229,32 @@ Please check out our [contribution guidelines](CONTRIBUTING.md) for detailed inf
 
 For security issues, please review our [security policy](SECURITY.md).
 
+### Local Frontend Testing
+
+You can test the frontend UI locally without deploying to Home Assistant:
+
+1. **Start the local test server:**
+   ```bash
+   cd tests/frontend
+   python3 serve.py
+   ```
+
+2. **Open your browser:**
+   Navigate to `http://localhost:8000/test_panel.html`
+
+3. **Test the interface:**
+   The test page provides a mock Home Assistant environment where you can test UI changes, styling, and component behavior without needing a full Home Assistant installation.
+
+**Test files location:**
+- `tests/frontend/test_panel.html` - Standalone test page
+- `tests/frontend/serve.py` - Simple HTTP server for testing
+
+This is particularly useful for:
+- Testing CSS changes and styling
+- Verifying UI layout and responsiveness
+- Debugging frontend JavaScript issues
+- Quick iteration on visual changes
+
 ### CI/CD Workflows
 
 This project uses GitHub Actions to ensure code quality and reliability:

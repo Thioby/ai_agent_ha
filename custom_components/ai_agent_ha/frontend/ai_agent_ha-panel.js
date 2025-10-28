@@ -54,27 +54,31 @@ class AiAgentHaPanel extends LitElement {
         font-size: 20px;
         font-weight: 500;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        position: relative;
+        z-index: 100;
       }
       .clear-button {
         margin-left: auto;
-        --mdc-theme-primary: var(--error-color);
-        --mdc-theme-on-primary: #fff;
-        --mdc-typography-button-font-size: 13px;
-        --mdc-button-height: 32px;
-        --mdc-button-padding: 0 12px;
+        border: none;
         border-radius: 16px;
         background: var(--error-color);
         color: #fff;
+        cursor: pointer;
         transition: all 0.2s ease;
         display: flex;
         align-items: center;
         gap: 6px;
-        padding: 0 12px;
+        padding: 8px 16px;
         font-weight: 500;
+        font-size: 13px;
         box-shadow: 0 1px 2px rgba(0,0,0,0.08);
         min-width: unset;
         width: auto;
-        height: 32px;
+        height: 36px;
+        flex-shrink: 0;
+        position: relative;
+        z-index: 101;
+        font-family: inherit;
       }
       .clear-button:hover {
         background: var(--error-color);
@@ -882,14 +886,14 @@ class AiAgentHaPanel extends LitElement {
       <div class="header">
         <ha-icon icon="mdi:robot"></ha-icon>
         AI Agent HA
-        <ha-button
+        <button
           class="clear-button"
           @click=${this._clearChat}
-          .disabled=${this._isLoading}
+          ?disabled=${this._isLoading}
         >
           <ha-icon icon="mdi:delete-sweep"></ha-icon>
           <span>Clear Chat</span>
-        </ha-button>
+        </button>
       </div>
       <div class="content">
         <div class="chat-container">
