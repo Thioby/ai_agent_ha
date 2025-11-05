@@ -49,7 +49,7 @@ TOKEN_LABELS = {
 DEFAULT_MODELS = {
     "llama": "Llama-4-Maverick-17B-128E-Instruct-FP8",
     "openai": "gpt-3.5-turbo",
-    "gemini": "gemini-1.5-flash",
+    "gemini": "gemini-2.5-flash",
     "openrouter": "openai/gpt-4o",
     "anthropic": "claude-3-5-sonnet-20241022",
     "local": "llama3.2",  # Updated to use llama3.2 as default
@@ -66,10 +66,12 @@ AVAILABLE_MODELS = {
         "o1-mini",
     ],
     "gemini": [
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-1.0-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.0-flash",
         "gemini-2.0-flash-exp",
+        "gemini-2.5-flash-preview",
+        "gemini-2.5-pro-preview",
     ],
     "openrouter": [
         "openai/gpt-4o",
