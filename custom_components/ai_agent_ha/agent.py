@@ -514,9 +514,11 @@ class OpenAIClient(BaseAIClient):
 
 
 class GeminiClient(BaseAIClient):
-    def __init__(self, token, model="gemini-1.5-flash"):
+    def __init__(self, token, model="gemini-2.5-flash"):
         self.token = token
         self.model = model
+        # Use v1beta for all models as per Google's current API documentation
+        # All Gemini 2.0/2.5 models are available on v1beta endpoint
         self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
     async def get_response(self, messages, **kwargs):
