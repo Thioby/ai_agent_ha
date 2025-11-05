@@ -9,6 +9,7 @@ PORT = 8000
 # Change to the project directory
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
+
 class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         # Add CORS headers for local testing
@@ -20,6 +21,7 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(200)
         self.end_headers()
+
 
 Handler = MyHTTPRequestHandler
 
