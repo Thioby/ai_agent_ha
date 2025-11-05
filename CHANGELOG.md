@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.99.6] - 2025-11-05
+### Fixed
+- Fixed UI issue with Clear Chat button overlap
+- Improved UI layout and responsiveness
+
+### Added
+- Added local frontend testing capability for development
+- Enhanced test infrastructure for frontend development
+
+## [0.99.5] - 2025-11-04
+### Added
+- Support for GPT-5 model from OpenAI
+- Added GPT-5 to the list of available OpenAI models
+
+### Fixed
+- Fixed linting issues throughout codebase
+- Improved code quality and consistency
+
+## [0.99.4] - 2025-11-03
+### Fixed
+- Fixed test suite issues
+- Improved test coverage and reliability
+- Resolved issue #16 related to test failures
+
 ## [0.99.3] - 2025-07-04
 ### Changed
 - **Breaking**: Now requires Python 3.12+ for Home Assistant compatibility
