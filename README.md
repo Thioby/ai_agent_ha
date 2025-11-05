@@ -86,7 +86,7 @@ For detailed dashboard creation documentation, see: [Dashboard Creation Guide](d
 ## 🚀 Supported AI Providers
 
 ### OpenAI
-- **Models**: GPT-3.5 Turbo, GPT-4, GPT-4 Turbo, GPT-4o, O1-Preview, O1-Mini
+- **Models**: GPT-3.5 Turbo, GPT-4, GPT-4 Turbo, GPT-4o, GPT-5, O1-Preview, O1-Mini
 - **Setup**: Get API key from [OpenAI Platform](https://platform.openai.com/api-keys)
 
 ### Google Gemini
