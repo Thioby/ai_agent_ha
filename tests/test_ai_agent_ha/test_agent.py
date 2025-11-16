@@ -165,27 +165,36 @@ class TestAIAgent:
         if not HOMEASSISTANT_AVAILABLE:
             pytest.skip("Home Assistant not available")
 
-        # Create mock states with device_class attributes
+        # Create mock states with device_class attributes and last_changed
         temp_sensor = MagicMock()
         temp_sensor.entity_id = "sensor.bedroom_temperature"
         temp_sensor.state = "22.5"
+        temp_sensor.last_changed = None
         temp_sensor.attributes = {
             "device_class": "temperature",
             "unit_of_measurement": "°C",
+            "friendly_name": "Bedroom Temperature",
         }
 
         humidity_sensor = MagicMock()
         humidity_sensor.entity_id = "sensor.living_room_humidity"
         humidity_sensor.state = "55"
+        humidity_sensor.last_changed = None
         humidity_sensor.attributes = {
             "device_class": "humidity",
             "unit_of_measurement": "%",
+            "friendly_name": "Living Room Humidity",
         }
 
         other_sensor = MagicMock()
         other_sensor.entity_id = "sensor.power_usage"
         other_sensor.state = "150"
-        other_sensor.attributes = {"device_class": "power", "unit_of_measurement": "W"}
+        other_sensor.last_changed = None
+        other_sensor.attributes = {
+            "device_class": "power",
+            "unit_of_measurement": "W",
+            "friendly_name": "Power Usage",
+        }
 
         mock_hass.states.async_all.return_value = [
             temp_sensor,
@@ -231,17 +240,26 @@ class TestAIAgent:
         climate_entity = MagicMock()
         climate_entity.entity_id = "climate.thermostat"
         climate_entity.state = "heat"
-        climate_entity.attributes = {}
+        climate_entity.last_changed = None
+        climate_entity.attributes = {"friendly_name": "Thermostat"}
 
         temp_sensor = MagicMock()
         temp_sensor.entity_id = "sensor.bedroom_temperature"
         temp_sensor.state = "22.5"
-        temp_sensor.attributes = {"device_class": "temperature"}
+        temp_sensor.last_changed = None
+        temp_sensor.attributes = {
+            "device_class": "temperature",
+            "friendly_name": "Bedroom Temperature",
+        }
 
         humidity_sensor = MagicMock()
         humidity_sensor.entity_id = "sensor.living_room_humidity"
         humidity_sensor.state = "55"
-        humidity_sensor.attributes = {"device_class": "humidity"}
+        humidity_sensor.last_changed = None
+        humidity_sensor.attributes = {
+            "device_class": "humidity",
+            "friendly_name": "Living Room Humidity",
+        }
 
         mock_hass.states.async_all.return_value = [
             climate_entity,
@@ -281,17 +299,29 @@ class TestAIAgent:
         temp_sensor1 = MagicMock()
         temp_sensor1.entity_id = "sensor.bedroom_temperature"
         temp_sensor1.state = "22.5"
-        temp_sensor1.attributes = {"device_class": "temperature"}
+        temp_sensor1.last_changed = None
+        temp_sensor1.attributes = {
+            "device_class": "temperature",
+            "friendly_name": "Bedroom Temperature",
+        }
 
         temp_sensor2 = MagicMock()
         temp_sensor2.entity_id = "sensor.kitchen_temperature"
         temp_sensor2.state = "23.1"
-        temp_sensor2.attributes = {"device_class": "temperature"}
+        temp_sensor2.last_changed = None
+        temp_sensor2.attributes = {
+            "device_class": "temperature",
+            "friendly_name": "Kitchen Temperature",
+        }
 
         humidity_sensor = MagicMock()
         humidity_sensor.entity_id = "sensor.living_room_humidity"
         humidity_sensor.state = "55"
-        humidity_sensor.attributes = {"device_class": "humidity"}
+        humidity_sensor.last_changed = None
+        humidity_sensor.attributes = {
+            "device_class": "humidity",
+            "friendly_name": "Living Room Humidity",
+        }
 
         mock_hass.states.async_all.return_value = [
             temp_sensor1,
@@ -332,7 +362,8 @@ class TestAIAgent:
         climate_entity = MagicMock()
         climate_entity.entity_id = "climate.thermostat"
         climate_entity.state = "heat"
-        climate_entity.attributes = {}
+        climate_entity.last_changed = None
+        climate_entity.attributes = {"friendly_name": "Thermostat"}
 
         mock_hass.states.async_all.return_value = [climate_entity]
         mock_hass.states.get = lambda entity_id: (
