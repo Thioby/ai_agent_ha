@@ -59,10 +59,20 @@ def sanitize_for_logging(data: Any, mask: str = "***REDACTED***") -> Any:
     """
     # Sensitive field patterns (case-insensitive)
     sensitive_patterns = {
-        'token', 'key', 'password', 'secret', 'credential',
-        'auth', 'authorization', 'api_key', 'apikey',
-        'llama_token', 'openai_token', 'gemini_token',
-        'anthropic_token', 'openrouter_token'
+        "token",
+        "key",
+        "password",
+        "secret",
+        "credential",
+        "auth",
+        "authorization",
+        "api_key",
+        "apikey",
+        "llama_token",
+        "openai_token",
+        "gemini_token",
+        "anthropic_token",
+        "openrouter_token",
     }
 
     if isinstance(data, dict):
@@ -190,7 +200,10 @@ class LocalClient(BaseAIClient):
                     )
                     _LOGGER.debug("Local API response status: %d", resp.status)
                     # Sanitize headers to avoid logging any auth tokens
-                    _LOGGER.debug("Local API response headers: %s", sanitize_for_logging(dict(resp.headers)))
+                    _LOGGER.debug(
+                        "Local API response headers: %s",
+                        sanitize_for_logging(dict(resp.headers)),
+                    )
 
                     # Try to parse as JSON
                     try:
@@ -2216,7 +2229,9 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
 
             _LOGGER.debug(f"Processing query with provider: {provider}")
             # Log sanitized config (masks all tokens/keys for security)
-            _LOGGER.debug(f"Using config: {json.dumps(sanitize_for_logging(config), default=str)}")
+            _LOGGER.debug(
+                f"Using config: {json.dumps(sanitize_for_logging(config), default=str)}"
+            )
 
             selected_provider = provider or config.get("ai_provider", "llama")
             models_config = config.get("models", {})

@@ -1,7 +1,9 @@
 """Tests for the sanitization utility function."""
-import pytest
-import sys
+
 import os
+import sys
+
+import pytest
 
 # Add the parent directory to the path for direct imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -28,10 +30,20 @@ def get_sanitize_function():
         """
         # Sensitive field patterns (case-insensitive)
         sensitive_patterns = {
-            'token', 'key', 'password', 'secret', 'credential',
-            'auth', 'authorization', 'api_key', 'apikey',
-            'llama_token', 'openai_token', 'gemini_token',
-            'anthropic_token', 'openrouter_token'
+            "token",
+            "key",
+            "password",
+            "secret",
+            "credential",
+            "auth",
+            "authorization",
+            "api_key",
+            "apikey",
+            "llama_token",
+            "openai_token",
+            "gemini_token",
+            "anthropic_token",
+            "openrouter_token",
         }
 
         if isinstance(data, dict):
@@ -39,7 +51,9 @@ def get_sanitize_function():
             for key, value in data.items():
                 # Check if key matches any sensitive pattern
                 key_lower = str(key).lower()
-                is_sensitive = any(pattern in key_lower for pattern in sensitive_patterns)
+                is_sensitive = any(
+                    pattern in key_lower for pattern in sensitive_patterns
+                )
 
                 if is_sensitive:
                     sanitized[key] = mask
@@ -82,7 +96,7 @@ class TestSanitization:
             "gemini_token": "gm-xyz789",
             "anthropic_token": "sk-ant-456",
             "ai_provider": "openai",
-            "model": "gpt-4"
+            "model": "gpt-4",
         }
         result = sanitize_for_logging(data)
 
@@ -119,11 +133,8 @@ class TestSanitization:
     def test_sanitize_nested_dict(self):
         """Test sanitization of nested dictionaries."""
         data = {
-            "config": {
-                "openai_token": "sk-abc123",
-                "model": "gpt-4"
-            },
-            "ai_provider": "openai"
+            "config": {"openai_token": "sk-abc123", "model": "gpt-4"},
+            "ai_provider": "openai",
         }
         result = sanitize_for_logging(data)
 
@@ -135,7 +146,7 @@ class TestSanitization:
         """Test sanitization of lists containing dictionaries."""
         data = [
             {"api_key": "key1", "name": "config1"},
-            {"api_key": "key2", "name": "config2"}
+            {"api_key": "key2", "name": "config2"},
         ]
         result = sanitize_for_logging(data)
 
@@ -146,10 +157,7 @@ class TestSanitization:
 
     def test_sanitize_tuple(self):
         """Test sanitization of tuples."""
-        data = (
-            {"token": "secret", "name": "test"},
-            "plain_value"
-        )
+        data = ({"token": "secret", "name": "test"}, "plain_value")
         result = sanitize_for_logging(data)
 
         assert isinstance(result, tuple)
@@ -163,7 +171,7 @@ class TestSanitization:
             "Token": "secret1",
             "API_KEY": "secret2",
             "Password": "secret3",
-            "AUTHORIZATION": "secret4"
+            "AUTHORIZATION": "secret4",
         }
         result = sanitize_for_logging(data)
 
@@ -177,7 +185,7 @@ class TestSanitization:
         data = {
             "my_token": "secret",
             "custom_api_key": "secret2",
-            "db_password": "secret3"
+            "db_password": "secret3",
         }
         result = sanitize_for_logging(data)
 
@@ -213,10 +221,7 @@ class TestSanitization:
                 "level2": {
                     "level3": {
                         "api_key": "secret",
-                        "config": {
-                            "token": "secret2",
-                            "safe_value": "ok"
-                        }
+                        "config": {"token": "secret2", "safe_value": "ok"},
                     }
                 }
             }
@@ -224,7 +229,9 @@ class TestSanitization:
         result = sanitize_for_logging(data)
 
         assert result["level1"]["level2"]["level3"]["api_key"] == "***REDACTED***"
-        assert result["level1"]["level2"]["level3"]["config"]["token"] == "***REDACTED***"
+        assert (
+            result["level1"]["level2"]["level3"]["config"]["token"] == "***REDACTED***"
+        )
         assert result["level1"]["level2"]["level3"]["config"]["safe_value"] == "ok"
 
     def test_sanitize_real_config(self):
@@ -240,8 +247,8 @@ class TestSanitization:
             "models": {
                 "openai": "gpt-4",
                 "gemini": "gemini-pro",
-                "anthropic": "claude-3-sonnet"
-            }
+                "anthropic": "claude-3-sonnet",
+            },
         }
         result = sanitize_for_logging(config)
 
@@ -265,7 +272,7 @@ class TestSanitization:
             "Content-Type": "application/json",
             "Authorization": "Bearer secret-token",
             "X-API-Key": "api-key-123",
-            "User-Agent": "HomeAssistant/1.0"
+            "User-Agent": "HomeAssistant/1.0",
         }
         result = sanitize_for_logging(headers)
 
