@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **CRITICAL**: Fixed Anthropic API system prompt being overwritten by data payloads
+  - Data responses now correctly use "user" role instead of "system" role
+  - Ensures Claude receives all formatting instructions for dashboard/automation creation
+  - Resolves issue where Claude would return YAML in `final_response` instead of JSON with `dashboard_suggestion`
+- Fixed climate dashboard creation for users with only temperature/humidity sensors (no climate.* entities)
+  - Added `get_entities_by_device_class()` helper function
+  - Added `get_climate_related_entities()` to combine climate.* entities with temperature/humidity sensors
+
+### Added
+- `get_entities_by_device_class(device_class, domain)` function to filter entities by device_class attribute
+- `get_climate_related_entities()` function for comprehensive climate dashboard support
+  - Includes climate.* entities (thermostats, HVAC)
+  - Includes sensor.* entities with device_class: temperature
+  - Includes sensor.* entities with device_class: humidity
+  - Automatic deduplication to prevent duplicate entities
+- Enhanced dashboard templates with temperature/humidity sensor support
+  - History graphs for temperature and humidity visualization
+  - Entity cards showing current sensor values
+  - Properly categorized sensor groups by device_class
+- Updated Anthropic provider to use Claude Sonnet 4.5 as default model
+- Added `claude-sonnet-4-5-20250929` to available Anthropic models
+- Enhanced `get_entity_registry()` to include device_class, state_class, and unit_of_measurement attributes
+- Device class guidance in system prompts for improved AI understanding
+- Unit tests for new climate-related functions and critical system prompt fix
+
 ## [0.99.6] - 2025-11-05
 ### Fixed
 - Fixed UI issue with Clear Chat button overlap

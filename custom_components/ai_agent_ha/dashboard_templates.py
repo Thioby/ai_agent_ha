@@ -60,20 +60,37 @@ DASHBOARD_TEMPLATES = {
         "show_in_sidebar": True,
         "views": [
             {
-                "title": "Temperature Control",
+                "title": "Temperature & Humidity",
                 "cards": [
                     {
                         "type": "thermostat",
-                        "entity": "",  # To be filled with thermostat entity
+                        "entity": "",  # To be filled with climate.* thermostat entity (optional)
+                    },
+                    {
+                        "type": "history-graph",
+                        "title": "Temperature History",
+                        "entities": [],  # To be filled with temperature sensor entities
+                        "hours_to_show": 24,
                     },
                     {
                         "type": "entities",
                         "title": "Temperature Sensors",
-                        "entities": [],  # To be filled with temperature sensor entities
+                        "entities": [],  # To be filled with temperature sensor entities (device_class: temperature)
+                    },
+                    {
+                        "type": "history-graph",
+                        "title": "Humidity History",
+                        "entities": [],  # To be filled with humidity sensor entities
+                        "hours_to_show": 24,
+                    },
+                    {
+                        "type": "entities",
+                        "title": "Humidity Sensors",
+                        "entities": [],  # To be filled with humidity sensor entities (device_class: humidity)
                     },
                     {
                         "type": "weather-forecast",
-                        "entity": "",  # To be filled with weather entity
+                        "entity": "",  # To be filled with weather entity (optional)
                     },
                 ],
             }
@@ -235,18 +252,29 @@ def get_template_for_entities(entities, dashboard_type="general"):
         "views": [],
     }
 
-    # Group entities by domain
+    # Group entities by domain and by device_class for sensors
     entity_groups = {}
+    sensor_by_device_class = {}
+
     for entity in entities:
         if isinstance(entity, dict) and "entity_id" in entity:
             entity_id = entity["entity_id"]
+            # Get device_class from attributes if available
+            device_class = entity.get("attributes", {}).get("device_class")
         else:
             entity_id = str(entity)
+            device_class = None
 
         domain = entity_id.split(".")[0]
         if domain not in entity_groups:
             entity_groups[domain] = []
         entity_groups[domain].append(entity_id)
+
+        # Categorize sensors by device_class
+        if domain == "sensor" and device_class:
+            if device_class not in sensor_by_device_class:
+                sensor_by_device_class[device_class] = []
+            sensor_by_device_class[device_class].append(entity_id)
 
     # Create view with cards for each domain
     view_cards = []
@@ -257,10 +285,52 @@ def get_template_for_entities(entities, dashboard_type="general"):
             {"type": "entities", "title": "Lights", "entities": entity_groups["light"]}
         )
 
-    # Climate
+    # Climate - handle both climate entities and temperature/humidity sensors
     if "climate" in entity_groups:
         for climate_entity in entity_groups["climate"]:
             view_cards.append({"type": "thermostat", "entity": climate_entity})
+
+    # Temperature sensors - create history graphs for climate dashboards
+    if "temperature" in sensor_by_device_class:
+        temp_sensors = sensor_by_device_class["temperature"]
+        # Add history graph for temperature visualization
+        view_cards.append(
+            {
+                "type": "history-graph",
+                "title": "Temperature History",
+                "entities": temp_sensors,
+                "hours_to_show": 24,
+            }
+        )
+        # Add entity card for current values
+        view_cards.append(
+            {
+                "type": "entities",
+                "title": "Temperature Sensors",
+                "entities": temp_sensors,
+            }
+        )
+
+    # Humidity sensors - create gauge cards for climate dashboards
+    if "humidity" in sensor_by_device_class:
+        humidity_sensors = sensor_by_device_class["humidity"]
+        # Add history graph for humidity visualization
+        view_cards.append(
+            {
+                "type": "history-graph",
+                "title": "Humidity History",
+                "entities": humidity_sensors,
+                "hours_to_show": 24,
+            }
+        )
+        # Add entity card for current values
+        view_cards.append(
+            {
+                "type": "entities",
+                "title": "Humidity Sensors",
+                "entities": humidity_sensors,
+            }
+        )
 
     # Media players
     if "media_player" in entity_groups:
@@ -281,15 +351,23 @@ def get_template_for_entities(entities, dashboard_type="general"):
         for alarm_entity in entity_groups["alarm_control_panel"]:
             view_cards.append({"type": "alarm-panel", "entity": alarm_entity})
 
-    # Sensors
+    # Other Sensors (not temperature or humidity)
     if "sensor" in entity_groups:
-        view_cards.append(
-            {
-                "type": "entities",
-                "title": "Sensors",
-                "entities": entity_groups["sensor"][:10],  # Limit to first 10
-            }
-        )
+        # Filter out temperature and humidity sensors that we already handled
+        other_sensors = [
+            s
+            for s in entity_groups["sensor"]
+            if s not in sensor_by_device_class.get("temperature", [])
+            and s not in sensor_by_device_class.get("humidity", [])
+        ]
+        if other_sensors:
+            view_cards.append(
+                {
+                    "type": "entities",
+                    "title": "Other Sensors",
+                    "entities": other_sensors[:10],  # Limit to first 10
+                }
+            )
 
     # Switches
     if "switch" in entity_groups:

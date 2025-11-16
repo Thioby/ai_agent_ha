@@ -48,22 +48,32 @@ TOKEN_LABELS = {
 
 DEFAULT_MODELS = {
     "llama": "Llama-4-Maverick-17B-128E-Instruct-FP8",
-    "openai": "gpt-3.5-turbo",
+    "openai": "gpt-5",
     "gemini": "gemini-2.5-flash",
     "openrouter": "openai/gpt-4o",
-    "anthropic": "claude-3-5-sonnet-20241022",
+    "anthropic": "claude-sonnet-4-5-20250929",
     "local": "llama3.2",  # Updated to use llama3.2 as default
 }
 
 AVAILABLE_MODELS = {
     "openai": [
-        "gpt-3.5-turbo",
-        "gpt-4",
-        "gpt-4-turbo",
+        "gpt-5",
+        "gpt-5-mini",
+        "gpt-5-nano",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4.1-nano",
         "gpt-4o",
         "gpt-4o-mini",
+        "o3",
+        "o3-mini",
+        "o4-mini",
+        "o1",
         "o1-preview",
         "o1-mini",
+        "gpt-4-turbo",
+        "gpt-4",
+        "gpt-3.5-turbo",
     ],
     "gemini": [
         "gemini-2.5-flash",
@@ -87,6 +97,8 @@ AVAILABLE_MODELS = {
         "deepseek/deepseek-r1",
     ],
     "anthropic": [
+        "claude-sonnet-4-5-20250929",
+        "claude-sonnet-4-20250514",
         "claude-3-5-sonnet-20241022",
         "claude-3-5-haiku-20241022",
         "claude-3-opus-20240229",
