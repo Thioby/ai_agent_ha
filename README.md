@@ -300,7 +300,7 @@ If you're running an older Home Assistant version with Python 3.11, please use v
 
 If you find this integration helpful and would like to support its development, you can buy me a coffee! Your support helps keep this project active and maintained.
 
-[![Buy Me A Coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-support-yellow.svg)](https://www.buymeacoffee.com/sbenodiz)
+[![Buy Me A Coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-tips-yellow.svg)](https://www.buymeacoffee.com/sbenodiz)
 
 Every contribution, no matter how small, is greatly appreciated and helps fund the continued development and improvement of AI Agent HA.
 
