@@ -310,6 +310,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
+- **Troubleshooting**: [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
 - **Issues**: [GitHub Issues](https://github.com/sbenodiz/ai_agent_ha/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/sbenodiz/ai_agent_ha/discussions)
 - **Documentation**: [Wiki](https://github.com/sbenodiz/ai_agent_ha/wiki)
