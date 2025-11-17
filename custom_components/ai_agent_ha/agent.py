@@ -145,6 +145,7 @@ class LocalClient(BaseAIClient):
         payload = {
             "prompt": prompt,
             "stream": False,  # Disable streaming to get a single complete response
+            # max_tokens omitted - let local model use its default capacity
         }
 
         # Add model if specified
@@ -452,9 +453,9 @@ class LlamaClient(BaseAIClient):
         payload = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": 2048,
             "temperature": 0.7,
             "top_p": 0.9,
+            # max_tokens omitted - let Llama use the model's default capacity
         }
 
         _LOGGER.debug("Llama request payload: %s", json.dumps(payload, indent=2))
@@ -483,24 +484,6 @@ class OpenAIClient(BaseAIClient):
         self.model = model
         self.api_url = "https://api.openai.com/v1/chat/completions"
 
-    def _get_token_parameter(self):
-        """Determine which token parameter to use based on the model."""
-        # Models that require max_completion_tokens instead of max_tokens
-        completion_token_models = [
-            "o3-mini",
-            "o3",
-            "o1-mini",
-            "o1-preview",
-            "o1",
-            "gpt-5",
-        ]
-
-        # Check if the model name contains any of the newer model identifiers
-        model_lower = self.model.lower()
-        if any(model_id in model_lower for model_id in completion_token_models):
-            return "max_completion_tokens"
-        return "max_tokens"
-
     def _is_restricted_model(self):
         """Check if the model has restricted parameters (no temperature, top_p, etc.)."""
         # Models that don't support temperature, top_p and other parameters
@@ -521,18 +504,17 @@ class OpenAIClient(BaseAIClient):
             "Content-Type": "application/json",
         }
 
-        # Determine which token parameter to use
-        token_param = self._get_token_parameter()
+        # Check if model has restricted parameters
         is_restricted = self._is_restricted_model()
         _LOGGER.debug(
-            "Using token parameter '%s' for model: %s (restricted: %s)",
-            token_param,
+            "Using model: %s (restricted parameters: %s)",
             self.model,
             is_restricted,
         )
 
         # Build payload with model-appropriate parameters
-        payload = {"model": self.model, "messages": messages, token_param: 2048}
+        # Don't set max_tokens - let OpenAI use the model's maximum capacity
+        payload = {"model": self.model, "messages": messages}
 
         # Only add temperature and top_p for models that support them
         if not is_restricted:
@@ -625,7 +607,7 @@ class GeminiClient(BaseAIClient):
             "generationConfig": {
                 "temperature": 0.7,
                 "topP": 0.9,
-                "maxOutputTokens": 2048,
+                # maxOutputTokens omitted - let Gemini use model's maximum capacity
             },
         }
 
@@ -657,9 +639,28 @@ class GeminiClient(BaseAIClient):
                         f"Invalid JSON response from Gemini: {response_text[:200]}"
                     )
 
+                # Log token usage for debugging, especially for Gemini 2.5 extended thinking
+                usage_metadata = data.get("usageMetadata", {})
+                if usage_metadata:
+                    _LOGGER.debug(
+                        "Gemini token usage - prompt: %d, total: %d, thoughts: %d",
+                        usage_metadata.get("promptTokenCount", 0),
+                        usage_metadata.get("totalTokenCount", 0),
+                        usage_metadata.get("thoughtsTokenCount", 0),
+                    )
+
                 # Extract text from Gemini response
                 candidates = data.get("candidates", [])
                 if candidates and "content" in candidates[0]:
+                    # Check finish reason for potential issues
+                    finish_reason = candidates[0].get("finishReason", "")
+                    if finish_reason == "MAX_TOKENS":
+                        _LOGGER.warning(
+                            "Gemini response truncated due to MAX_TOKENS limit. "
+                            "Thoughts used: %d tokens. Consider increasing maxOutputTokens.",
+                            usage_metadata.get("thoughtsTokenCount", 0),
+                        )
+
                     parts = candidates[0]["content"].get("parts", [])
                     if parts:
                         content = parts[0].get("text", "")
@@ -714,7 +715,7 @@ class AnthropicClient(BaseAIClient):
 
         payload = {
             "model": self.model,
-            "max_tokens": 2048,
+            "max_tokens": 8192,  # Maximum for Anthropic Claude models
             "temperature": 0.7,
             "messages": anthropic_messages,
         }
@@ -764,9 +765,9 @@ class OpenRouterClient(BaseAIClient):
         payload = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": 2048,
             "temperature": 0.7,
             "top_p": 0.9,
+            # max_tokens omitted - let OpenRouter use the model's maximum capacity
         }
 
         _LOGGER.debug("OpenRouter request payload: %s", json.dumps(payload, indent=2))
