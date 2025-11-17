@@ -137,7 +137,7 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
         try:
-            return AiAgentHaOptionsFlowHandler(config_entry)
+            return AiAgentHaOptionsFlowHandler()
         except Exception as e:
             _LOGGER.error("Error creating options flow: %s", e)
             return None
@@ -289,9 +289,8 @@ class InvalidApiKey(HomeAssistantError):
 class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for AI Agent HA."""
 
-    def __init__(self, config_entry):
+    def __init__(self):
         """Initialize options flow."""
-        self.config_entry = config_entry
         self.options_data = {}
 
     async def async_step_init(self, user_input=None):
