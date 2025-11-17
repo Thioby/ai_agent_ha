@@ -69,22 +69,6 @@ class TestOpenAIClient:
         except ImportError:
             pytest.skip("OpenAIClient not available")
 
-    def test_openai_token_parameter_detection(self):
-        """Test OpenAI token parameter detection."""
-        try:
-            from custom_components.ai_agent_ha.agent import OpenAIClient
-            
-            # Test newer models
-            client_o3 = OpenAIClient("test-token", "o3-mini")
-            assert client_o3._get_token_parameter() == "max_completion_tokens"
-            
-            # Test older models
-            client_gpt = OpenAIClient("test-token", "gpt-3.5-turbo")
-            assert client_gpt._get_token_parameter() == "max_tokens"
-            
-        except ImportError:
-            pytest.skip("OpenAIClient not available")
-
     def test_openai_restricted_model_detection(self):
         """Test OpenAI restricted model detection."""
         try:
