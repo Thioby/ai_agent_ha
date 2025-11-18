@@ -1174,9 +1174,9 @@ class AiAgentHaAgent:
                 return {"error": f"Entity {entity_id} not found"}
 
             # Get area information from entity/device registry
+            from homeassistant.helpers import area_registry as ar
             from homeassistant.helpers import device_registry as dr
             from homeassistant.helpers import entity_registry as er
-            from homeassistant.helpers import area_registry as ar
 
             entity_registry = er.async_get(self.hass)
             device_registry = dr.async_get(self.hass)
