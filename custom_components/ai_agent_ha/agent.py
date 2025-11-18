@@ -1187,27 +1187,44 @@ class AiAgentHaAgent:
                 device_registry = dr.async_get(self.hass)
                 area_registry = ar.async_get(self.hass)
 
-                if entity_registry and hasattr(entity_registry, 'async_get'):
+                if entity_registry and hasattr(entity_registry, "async_get"):
                     # Try to find the entity in the registry
                     entity_entry = entity_registry.async_get(entity_id)
                     if entity_entry:
                         # Check if entity has a direct area assignment
-                        if hasattr(entity_entry, 'area_id') and entity_entry.area_id:
+                        if hasattr(entity_entry, "area_id") and entity_entry.area_id:
                             area_id = entity_entry.area_id
                         # Otherwise check if the entity's device has an area
-                        elif hasattr(entity_entry, 'device_id') and entity_entry.device_id and device_registry and hasattr(device_registry, 'async_get'):
-                            device_entry = device_registry.async_get(entity_entry.device_id)
-                            if device_entry and hasattr(device_entry, 'area_id') and device_entry.area_id:
+                        elif (
+                            hasattr(entity_entry, "device_id")
+                            and entity_entry.device_id
+                            and device_registry
+                            and hasattr(device_registry, "async_get")
+                        ):
+                            device_entry = device_registry.async_get(
+                                entity_entry.device_id
+                            )
+                            if (
+                                device_entry
+                                and hasattr(device_entry, "area_id")
+                                and device_entry.area_id
+                            ):
                                 area_id = device_entry.area_id
 
                 # Get area name from area_id
-                if area_id and area_registry and hasattr(area_registry, 'async_get_area'):
+                if (
+                    area_id
+                    and area_registry
+                    and hasattr(area_registry, "async_get_area")
+                ):
                     area_entry = area_registry.async_get_area(area_id)
-                    if area_entry and hasattr(area_entry, 'name'):
+                    if area_entry and hasattr(area_entry, "name"):
                         area_name = area_entry.name
             except Exception as e:
                 # Registries not available (likely in test environment) - skip area information
-                _LOGGER.debug("Could not retrieve area information for %s: %s", entity_id, str(e))
+                _LOGGER.debug(
+                    "Could not retrieve area information for %s: %s", entity_id, str(e)
+                )
 
             result = {
                 "entity_id": state.entity_id,
