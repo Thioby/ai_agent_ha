@@ -1173,6 +1173,36 @@ class AiAgentHaAgent:
                 _LOGGER.warning("Entity not found: %s", entity_id)
                 return {"error": f"Entity {entity_id} not found"}
 
+            # Get area information from entity/device registry
+            from homeassistant.helpers import device_registry as dr
+            from homeassistant.helpers import entity_registry as er
+            from homeassistant.helpers import area_registry as ar
+
+            entity_registry = er.async_get(self.hass)
+            device_registry = dr.async_get(self.hass)
+            area_registry = ar.async_get(self.hass)
+
+            area_id = None
+            area_name = None
+
+            # Try to find the entity in the registry
+            entity_entry = entity_registry.async_get(entity_id)
+            if entity_entry:
+                # Check if entity has a direct area assignment
+                if entity_entry.area_id:
+                    area_id = entity_entry.area_id
+                # Otherwise check if the entity's device has an area
+                elif entity_entry.device_id:
+                    device_entry = device_registry.async_get(entity_entry.device_id)
+                    if device_entry and device_entry.area_id:
+                        area_id = device_entry.area_id
+
+            # Get area name from area_id
+            if area_id and area_registry:
+                area_entry = area_registry.async_get_area(area_id)
+                if area_entry:
+                    area_name = area_entry.name
+
             result = {
                 "entity_id": state.entity_id,
                 "state": state.state,
@@ -1180,6 +1210,8 @@ class AiAgentHaAgent:
                     state.last_changed.isoformat() if state.last_changed else None
                 ),
                 "friendly_name": state.attributes.get("friendly_name"),
+                "area_id": area_id,
+                "area_name": area_name,
                 "attributes": {
                     k: (v.isoformat() if hasattr(v, "isoformat") else v)
                     for k, v in state.attributes.items()
