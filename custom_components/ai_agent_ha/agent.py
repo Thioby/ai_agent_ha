@@ -1174,34 +1174,40 @@ class AiAgentHaAgent:
                 return {"error": f"Entity {entity_id} not found"}
 
             # Get area information from entity/device registry
-            from homeassistant.helpers import area_registry as ar
-            from homeassistant.helpers import device_registry as dr
-            from homeassistant.helpers import entity_registry as er
-
-            entity_registry = er.async_get(self.hass)
-            device_registry = dr.async_get(self.hass)
-            area_registry = ar.async_get(self.hass)
-
+            # Wrapped in try-except to handle cases where registries aren't available (e.g., in tests)
             area_id = None
             area_name = None
 
-            # Try to find the entity in the registry
-            entity_entry = entity_registry.async_get(entity_id)
-            if entity_entry:
-                # Check if entity has a direct area assignment
-                if entity_entry.area_id:
-                    area_id = entity_entry.area_id
-                # Otherwise check if the entity's device has an area
-                elif entity_entry.device_id:
-                    device_entry = device_registry.async_get(entity_entry.device_id)
-                    if device_entry and device_entry.area_id:
-                        area_id = device_entry.area_id
+            try:
+                from homeassistant.helpers import area_registry as ar
+                from homeassistant.helpers import device_registry as dr
+                from homeassistant.helpers import entity_registry as er
 
-            # Get area name from area_id
-            if area_id and area_registry:
-                area_entry = area_registry.async_get_area(area_id)
-                if area_entry:
-                    area_name = area_entry.name
+                entity_registry = er.async_get(self.hass)
+                device_registry = dr.async_get(self.hass)
+                area_registry = ar.async_get(self.hass)
+
+                if entity_registry:
+                    # Try to find the entity in the registry
+                    entity_entry = entity_registry.async_get(entity_id)
+                    if entity_entry:
+                        # Check if entity has a direct area assignment
+                        if hasattr(entity_entry, 'area_id') and entity_entry.area_id:
+                            area_id = entity_entry.area_id
+                        # Otherwise check if the entity's device has an area
+                        elif hasattr(entity_entry, 'device_id') and entity_entry.device_id and device_registry:
+                            device_entry = device_registry.async_get(entity_entry.device_id)
+                            if device_entry and hasattr(device_entry, 'area_id') and device_entry.area_id:
+                                area_id = device_entry.area_id
+
+                # Get area name from area_id
+                if area_id and area_registry:
+                    area_entry = area_registry.async_get_area(area_id)
+                    if area_entry and hasattr(area_entry, 'name'):
+                        area_name = area_entry.name
+            except (ImportError, AttributeError, TypeError) as e:
+                # Registries not available (likely in test environment) - skip area information
+                _LOGGER.debug("Could not retrieve area information for %s: %s", entity_id, str(e))
 
             result = {
                 "entity_id": state.entity_id,
