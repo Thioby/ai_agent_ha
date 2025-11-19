@@ -1191,9 +1191,15 @@ class AiAgentHaAgent:
                     # Try to find the entity in the registry
                     entity_entry = entity_registry.async_get(entity_id)
                     if entity_entry:
+                        _LOGGER.debug("Entity %s found in registry", entity_id)
                         # Check if entity has a direct area assignment
                         if hasattr(entity_entry, "area_id") and entity_entry.area_id:
                             area_id = entity_entry.area_id
+                            _LOGGER.debug(
+                                "Entity %s has direct area assignment: %s",
+                                entity_id,
+                                area_id,
+                            )
                         # Otherwise check if the entity's device has an area
                         elif (
                             hasattr(entity_entry, "device_id")
@@ -1201,15 +1207,45 @@ class AiAgentHaAgent:
                             and device_registry
                             and hasattr(device_registry, "async_get")
                         ):
+                            _LOGGER.debug(
+                                "Entity %s has device_id: %s, checking device area",
+                                entity_id,
+                                entity_entry.device_id,
+                            )
                             device_entry = device_registry.async_get(
                                 entity_entry.device_id
                             )
-                            if (
-                                device_entry
-                                and hasattr(device_entry, "area_id")
-                                and device_entry.area_id
-                            ):
-                                area_id = device_entry.area_id
+                            if device_entry:
+                                if (
+                                    hasattr(device_entry, "area_id")
+                                    and device_entry.area_id
+                                ):
+                                    area_id = device_entry.area_id
+                                    _LOGGER.debug(
+                                        "Device %s has area: %s",
+                                        entity_entry.device_id,
+                                        area_id,
+                                    )
+                                else:
+                                    _LOGGER.debug(
+                                        "Device %s has no area assigned",
+                                        entity_entry.device_id,
+                                    )
+                            else:
+                                _LOGGER.debug(
+                                    "Device %s not found in registry",
+                                    entity_entry.device_id,
+                                )
+                        else:
+                            _LOGGER.debug(
+                                "Entity %s has no area_id and no device_id", entity_id
+                            )
+                    else:
+                        _LOGGER.debug(
+                            "Entity %s not found in entity registry", entity_id
+                        )
+                else:
+                    _LOGGER.debug("Entity registry not available for %s", entity_id)
 
                 # Get area name from area_id
                 if (
@@ -1220,10 +1256,21 @@ class AiAgentHaAgent:
                     area_entry = area_registry.async_get_area(area_id)
                     if area_entry and hasattr(area_entry, "name"):
                         area_name = area_entry.name
+                        _LOGGER.debug(
+                            "Resolved area_id %s to area_name: %s", area_id, area_name
+                        )
+                    else:
+                        _LOGGER.debug("Could not resolve area_id %s to name", area_id)
+                elif area_id:
+                    _LOGGER.debug(
+                        "Have area_id %s but area_registry not available", area_id
+                    )
             except Exception as e:
                 # Registries not available (likely in test environment) - skip area information
-                _LOGGER.debug(
-                    "Could not retrieve area information for %s: %s", entity_id, str(e)
+                _LOGGER.warning(
+                    "Exception retrieving area information for %s: %s",
+                    entity_id,
+                    str(e),
                 )
 
             result = {
@@ -1240,7 +1287,12 @@ class AiAgentHaAgent:
                     for k, v in state.attributes.items()
                 },
             }
-            _LOGGER.debug("Retrieved entity state: %s", json.dumps(result))
+            _LOGGER.debug(
+                "Retrieved entity state for %s: area_id=%s, area_name=%s",
+                entity_id,
+                area_id,
+                area_name,
+            )
             return result
         except Exception as e:
             _LOGGER.exception("Error getting entity state: %s", str(e))
