@@ -1531,17 +1531,25 @@ class AiAgentHaAgent:
             return [{"error": f"Error getting automations: {str(e)}"}]
 
     async def get_entity_registry(self) -> List[Dict]:
-        """Get entity registry entries with device_class and other metadata"""
+        """Get entity registry entries with device_class and other metadata.
+
+        Area information is resolved from the entity or its device.
+        """
         _LOGGER.debug("Requesting all entity registry entries")
         try:
+            from homeassistant.helpers import area_registry as ar
+            from homeassistant.helpers import device_registry as dr
             from homeassistant.helpers import entity_registry as er
 
-            registry = er.async_get(self.hass)
-            if not registry:
+            entity_registry = er.async_get(self.hass)
+            if not entity_registry:
                 return []
 
+            device_registry = dr.async_get(self.hass)
+            area_registry = ar.async_get(self.hass)
+
             result = []
-            for entry in registry.entities.values():
+            for entry in entity_registry.entities.values():
                 # Get the current state to access device_class and other attributes
                 state = self.hass.states.get(entry.entity_id)
                 device_class = state.attributes.get("device_class") if state else None
@@ -1550,13 +1558,31 @@ class AiAgentHaAgent:
                     state.attributes.get("unit_of_measurement") if state else None
                 )
 
+                # Resolve area_id and area_name
+                # First check entity's direct area assignment
+                area_id = entry.area_id
+                area_name = None
+
+                # If entity doesn't have area, check device's area
+                if not area_id and entry.device_id and device_registry:
+                    device_entry = device_registry.async_get(entry.device_id)
+                    if device_entry and hasattr(device_entry, "area_id"):
+                        area_id = device_entry.area_id
+
+                # Resolve area_name from area_id
+                if area_id and area_registry:
+                    area_entry = area_registry.async_get_area(area_id)
+                    if area_entry and hasattr(area_entry, "name"):
+                        area_name = area_entry.name
+
                 result.append(
                     {
                         "entity_id": entry.entity_id,
                         "device_id": entry.device_id,
                         "platform": entry.platform,
                         "disabled": entry.disabled,
-                        "area_id": entry.area_id,
+                        "area_id": area_id,
+                        "area_name": area_name,
                         "original_name": entry.original_name,
                         "unique_id": entry.unique_id,
                         "device_class": device_class,
