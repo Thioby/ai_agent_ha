@@ -822,7 +822,6 @@ class AiAgentHaAgent:
             "- get_device_registry(): Get device registry entries\n"
             "- get_area_registry(): Get room/area information\n"
             "- get_history(entity_id, hours): Get historical state changes\n"
-            "- get_logbook_entries(hours): Get recent events\n"
             "- get_person_data(): Get person tracking information\n"
             "- get_statistics(entity_id): Get sensor statistics\n"
             "- get_scenes(): Get scene configurations\n"
@@ -938,7 +937,6 @@ class AiAgentHaAgent:
             "- get_device_registry(): Get device registry entries\n"
             "- get_area_registry(): Get room/area information\n"
             "- get_history(entity_id, hours): Get historical state changes\n"
-            "- get_logbook_entries(hours): Get recent events\n"
             "- get_person_data(): Get person tracking information\n"
             "- get_statistics(entity_id): Get sensor statistics\n"
             "- get_scenes(): Get scene configurations\n"
@@ -1667,38 +1665,6 @@ class AiAgentHaAgent:
         except Exception as e:
             _LOGGER.exception("Error getting history: %s", str(e))
             return [{"error": f"Error getting history: {str(e)}"}]
-
-    async def get_logbook_entries(self, hours: int = 24) -> List[Dict]:
-        """Get recent logbook entries"""
-        _LOGGER.debug("Requesting recent logbook entries")
-        try:
-            from homeassistant.components import logbook
-
-            now = dt_util.utcnow()
-            start = now - timedelta(hours=hours)
-
-            # Get logbook entries
-            entries = await self.hass.async_add_executor_job(
-                getattr(logbook, "get_events"), self.hass, start, now
-            )
-
-            # Convert to serializable format
-            result = []
-            for entry in entries:
-                result.append(
-                    {
-                        "when": entry.get("when"),
-                        "name": entry.get("name"),
-                        "message": entry.get("message"),
-                        "entity_id": entry.get("entity_id"),
-                        "state": entry.get("state"),
-                        "domain": entry.get("domain"),
-                    }
-                )
-            return result
-        except Exception as e:
-            _LOGGER.exception("Error getting logbook entries: %s", str(e))
-            return [{"error": f"Error getting logbook entries: {str(e)}"}]
 
     async def get_area_registry(self) -> Dict[str, Any]:
         """Get area registry information"""
@@ -2734,7 +2700,6 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             "get_weather_data",
                             "get_area_registry",
                             "get_history",
-                            "get_logbook_entries",
                             "get_person_data",
                             "get_statistics",
                             "get_scenes",
@@ -2816,10 +2781,6 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                 data = await self.get_history(
                                     parameters.get("entity_id"),
                                     parameters.get("hours", 24),
-                                )
-                            elif request_type == "get_logbook_entries":
-                                data = await self.get_logbook_entries(
-                                    parameters.get("hours", 24)
                                 )
                             elif request_type == "get_person_data":
                                 data = await self.get_person_data()
