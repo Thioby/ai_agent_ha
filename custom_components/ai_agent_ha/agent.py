@@ -2588,6 +2588,11 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                     ),
                     "client_class": AnthropicClient,
                 },
+                "alter": {
+                    "token_key": "alter_token",
+                    "model": models_config.get("alter", ""),
+                    "client_class": AlterClient,
+                },
                 "local": {
                     "token_key": "local_url",
                     "model": models_config.get("local", ""),

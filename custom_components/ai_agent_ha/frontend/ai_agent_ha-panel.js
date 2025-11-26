@@ -12,6 +12,7 @@ const PROVIDERS = {
   gemini: "Google Gemini",
   openrouter: "OpenRouter",
   anthropic: "Anthropic",
+  alter: "Alter",
   local: "Local Model",
 };
 
@@ -638,6 +639,7 @@ class AiAgentHaPanel extends LitElement {
                 "AI Agent HA (OpenAI)": "openai",
                 "AI Agent HA (Llama)": "llama",
                 "AI Agent HA (Anthropic (Claude))": "anthropic",
+                "AI Agent HA (Alter)": "alter",
                 "AI Agent HA (Local Model)": "local",
               };
               provider = titleToProviderMap[entry.title] || "unknown";
