@@ -25,6 +25,7 @@ PROVIDERS = {
     "gemini": "Google Gemini",
     "openrouter": "OpenRouter",
     "anthropic": "Anthropic (Claude)",
+    "alter": "Alter",
     "local": "Local Model",
 }
 
@@ -34,6 +35,7 @@ TOKEN_FIELD_NAMES = {
     "gemini": "gemini_token",
     "openrouter": "openrouter_token",
     "anthropic": "anthropic_token",
+    "alter": "alter_token",
     "local": CONF_LOCAL_URL,  # For local models, we use URL instead of token
 }
 
@@ -43,6 +45,7 @@ TOKEN_LABELS = {
     "gemini": "Google Gemini API Key",
     "openrouter": "OpenRouter API Key",
     "anthropic": "Anthropic API Key",
+    "alter": "Alter API Key",
     "local": "Local API URL (e.g., http://localhost:11434/api/generate)",
 }
 
@@ -52,6 +55,7 @@ DEFAULT_MODELS = {
     "gemini": "gemini-2.5-flash",
     "openrouter": "openai/gpt-4o",
     "anthropic": "claude-sonnet-4-5-20250929",
+    "alter": "",  # User enters custom model
     "local": "llama3.2",  # Updated to use llama3.2 as default
 }
 
@@ -110,6 +114,10 @@ AVAILABLE_MODELS = {
         "Llama-3.1-70B-Instruct",
         "Llama-3.1-8B-Instruct",
         "Llama-3.2-90B-Instruct",
+    ],
+    # Alter - user enters custom model name only
+    "alter": [
+        "Custom...",
     ],
     # For local models, provide common Ollama models with llama3.2 as the default
     "local": [
@@ -177,6 +185,8 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
         token_field = TOKEN_FIELD_NAMES[provider]
         token_label = TOKEN_LABELS[provider]
         default_model = DEFAULT_MODELS[provider]
+        # For Alter provider, default to "Custom..." for the dropdown since model is user-provided
+        dropdown_default = "Custom..." if provider == "alter" else default_model
         available_models = AVAILABLE_MODELS.get(provider, [default_model])
 
         if user_input is not None:
@@ -209,8 +219,8 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
                     # Use selected model if it's not the "Custom..." option
                     self.config_data["models"][provider] = selected_model
                 else:
-                    # For local provider, allow empty model name
-                    if provider == "local":
+                    # For local and alter providers, allow empty model name
+                    if provider in ("local", "alter"):
                         self.config_data["models"][provider] = ""
                     else:
                         # Fallback to default model for other providers
@@ -262,10 +272,13 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
 
         # Add model selection if available
         if available_models:
-            # Add predefined models + custom option
-            model_options = available_models + ["Custom..."]
-            schema_dict[vol.Optional("model", default=default_model)] = SelectSelector(
-                SelectSelectorConfig(options=model_options)
+            # Add predefined models + custom option (avoid duplicating "Custom...")
+            if "Custom..." in available_models:
+                model_options = available_models
+            else:
+                model_options = available_models + ["Custom..."]
+            schema_dict[vol.Optional("model", default=dropdown_default)] = (
+                SelectSelector(SelectSelectorConfig(options=model_options))
             )
             schema_dict[vol.Optional("custom_model")] = TextSelector(
                 TextSelectorConfig(type="text")
@@ -334,6 +347,9 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
         # Get current configuration
         current_models = self.config_entry.data.get("models", {})
         current_model = current_models.get(provider, DEFAULT_MODELS[provider])
+        # For Alter provider, if model is empty, default to "Custom..." for the dropdown
+        if provider == "alter" and not current_model:
+            current_model = "Custom..."
         current_token = self.config_entry.data.get(token_field, "")
         available_models = AVAILABLE_MODELS.get(provider, [DEFAULT_MODELS[provider]])
 
@@ -366,8 +382,8 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
                         # Use selected model if it's not the "Custom..." option
                         updated_data["models"][provider] = selected_model
                     else:
-                        # For local provider, allow empty model name
-                        if provider == "local":
+                        # For local and alter providers, allow empty model name
+                        if provider in ("local", "alter"):
                             updated_data["models"][provider] = ""
                         else:
                             # Ensure we keep the current model or use default for other providers
@@ -431,8 +447,11 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
 
         # Add model selection if available
         if available_models:
-            # Add predefined models + custom option
-            model_options = available_models + ["Custom..."]
+            # Add predefined models + custom option (avoid duplicating "Custom...")
+            if "Custom..." in available_models:
+                model_options = available_models
+            else:
+                model_options = available_models + ["Custom..."]
             schema_dict[vol.Optional("model", default=current_model)] = SelectSelector(
                 SelectSelectorConfig(options=model_options)
             )
