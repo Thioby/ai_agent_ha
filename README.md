@@ -8,6 +8,18 @@ A powerful Home Assistant custom integration that connects your Home Assistant i
 
 Click the button above to install AI Agent HA directly through HACS, or see the [detailed installation instructions](#-installation) below.
 
+
+## ☕ Support the Project
+
+If you find this integration helpful and would like to support its development, you can buy me a coffee! Your support helps keep this project active and maintained. Currently I am the only Dev on that project and looking to have more paretners here.
+
+[![Buy Me A Coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-tips-yellow.svg)](https://www.buymeacoffee.com/sbenodiz)
+
+Every contribution, no matter how small, is greatly appreciated and helps fund the continued development and improvement of AI Agent HA.
+
+Another way to support me will be to try my new project. Askie - AI for kids. I am looking for feedback on this one: ⁠Web: https://kidsai.app • ⁠iOS: https://apps.apple.com/app/id6749299565  ⁠Android: https://play.google.com/store/apps/details?id=com.askie.app
+
+
 ## ✨ Features
 
 - 🤖 **Multiple AI Provider Support**: OpenAI, Google Gemini, Anthropic (Claude), OpenRouter, and Llama
@@ -296,13 +308,7 @@ If you're running an older Home Assistant version with Python 3.11, please use v
 - No data is stored outside your Home Assistant instance
 - Provider-specific security practices are followed
 
-## ☕ Support the Project
 
-If you find this integration helpful and would like to support its development, you can buy me a coffee! Your support helps keep this project active and maintained.
-
-[![Buy Me A Coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-tips-yellow.svg)](https://www.buymeacoffee.com/sbenodiz)
-
-Every contribution, no matter how small, is greatly appreciated and helps fund the continued development and improvement of AI Agent HA.
 
 ## 📝 License
 
