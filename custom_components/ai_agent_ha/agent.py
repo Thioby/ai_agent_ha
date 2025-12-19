@@ -1995,35 +1995,53 @@ class AiAgentHaAgent:
 
             # Use the lovelace service to get dashboards
             try:
-                from homeassistant.components.lovelace import CONF_DASHBOARDS
                 from homeassistant.components.lovelace import DOMAIN as LOVELACE_DOMAIN
 
-                # Get lovelace config
-                lovelace_config = self.hass.data.get(LOVELACE_DOMAIN, {})
-                dashboards = lovelace_config.get(CONF_DASHBOARDS, {})
+                # Get lovelace data using property access (required for HA 2026.2+)
+                # lovelace_data is a LovelaceData dataclass with a 'dashboards' attribute
+                lovelace_data = self.hass.data.get(LOVELACE_DOMAIN)
+                if lovelace_data is None:
+                    return [{"error": "Lovelace not available"}]
+
+                # Safety check for dashboards attribute (backward compatibility)
+                if not hasattr(lovelace_data, "dashboards"):
+                    return [{"error": "Lovelace dashboards not available"}]
+
+                # Use property access instead of dictionary access
+                dashboards = lovelace_data.dashboards
+
+                # Get YAML dashboard configs for metadata (title, icon, etc.)
+                # yaml_dashboards contains the configuration with metadata
+                yaml_configs = getattr(lovelace_data, "yaml_dashboards", {}) or {}
 
                 dashboard_list = []
 
-                # Add default dashboard
-                dashboard_list.append(
-                    {
-                        "url_path": None,
-                        "title": "Overview",
-                        "icon": "mdi:home",
-                        "show_in_sidebar": True,
-                        "require_admin": False,
-                    }
-                )
+                # Iterate over all dashboards (None key = default dashboard)
+                for url_path, dashboard_obj in dashboards.items():
+                    # Try to get metadata from yaml_dashboards first
+                    yaml_config = yaml_configs.get(url_path, {}) or {}
 
-                # Add custom dashboards
-                for url_path, config in dashboards.items():
+                    # Get title - check yaml config, then use defaults
+                    title = yaml_config.get("title")
+                    if not title:
+                        title = "Overview" if url_path is None else (url_path or "Dashboard")
+
+                    # Get icon - check yaml config, then use defaults
+                    icon = yaml_config.get("icon")
+                    if not icon:
+                        icon = "mdi:home" if url_path is None else "mdi:view-dashboard"
+
+                    # Get sidebar/admin settings from yaml config or defaults
+                    show_in_sidebar = yaml_config.get("show_in_sidebar", True)
+                    require_admin = yaml_config.get("require_admin", False)
+
                     dashboard_list.append(
                         {
                             "url_path": url_path,
-                            "title": config.get("title", url_path),
-                            "icon": config.get("icon", "mdi:view-dashboard"),
-                            "show_in_sidebar": config.get("show_in_sidebar", True),
-                            "require_admin": config.get("require_admin", False),
+                            "title": title,
+                            "icon": icon,
+                            "show_in_sidebar": show_in_sidebar,
+                            "require_admin": require_admin,
                         }
                     )
 
@@ -2047,48 +2065,34 @@ class AiAgentHaAgent:
                 "Requesting dashboard config for: %s", dashboard_url or "default"
             )
 
-            # Import the websocket handler
-            from homeassistant.components.lovelace import websocket_api as lovelace_ws
-            from homeassistant.components.websocket_api import require_admin
-
-            # Create a mock websocket connection for internal use
-            class MockConnection:
-                def __init__(self, hass):
-                    self.hass = hass
-                    self.user = None
-
-                def send_message(self, message):
-                    pass
-
             # Get dashboard configuration
             try:
                 from homeassistant.components.lovelace import DOMAIN as LOVELACE_DOMAIN
 
-                # Dashboard import - this may vary by Home Assistant version
-                LovelaceDashboard = None  # type: ignore[misc,assignment]
+                # Get lovelace data using property access (required for HA 2026.2+)
+                lovelace_data = self.hass.data.get(LOVELACE_DOMAIN)
+                if lovelace_data is None:
+                    return {"error": "Lovelace not available"}
 
-                # Get the dashboard
-                lovelace_config = self.hass.data.get(LOVELACE_DOMAIN, {})
+                # Safety check for dashboards attribute (backward compatibility)
+                if not hasattr(lovelace_data, "dashboards"):
+                    return {"error": "Lovelace dashboards not available"}
 
-                if dashboard_url is None:
-                    # Get default dashboard
-                    dashboard = lovelace_config.get("default_dashboard")
-                    if dashboard:
-                        config = await dashboard.async_get_info()
-                        return (
-                            dict(config) if config else {"error": "No dashboard config"}
-                        )
-                    else:
-                        return {"error": "Default dashboard not found"}
+                # Use property access instead of dictionary access
+                # The dashboards dict uses None as key for the default dashboard
+                dashboards = lovelace_data.dashboards
+
+                # Get the dashboard (None key = default dashboard)
+                dashboard_key = None if dashboard_url is None else dashboard_url
+                if dashboard_key in dashboards:
+                    dashboard = dashboards[dashboard_key]
+                    config = await dashboard.async_get_info()
+                    return (
+                        dict(config) if config else {"error": "No dashboard config"}
+                    )
                 else:
-                    # Get custom dashboard
-                    dashboards = lovelace_config.get("dashboards", {})
-                    if dashboard_url in dashboards:
-                        dashboard = dashboards[dashboard_url]
-                        config = await dashboard.async_get_info()
-                        return (
-                            dict(config) if config else {"error": "No dashboard config"}
-                        )
+                    if dashboard_url is None:
+                        return {"error": "Default dashboard not found"}
                     else:
                         return {"error": f"Dashboard '{dashboard_url}' not found"}
 
