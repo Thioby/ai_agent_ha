@@ -1686,14 +1686,14 @@ class AiAgentHaAgent:
         """Get historical state changes for an entity"""
         _LOGGER.debug("Requesting historical state changes for entity: %s", entity_id)
         try:
-            from homeassistant.components import history
+            from homeassistant.components.recorder.history import get_significant_states
 
             now = dt_util.utcnow()
             start = now - timedelta(hours=hours)
 
-            # Get history using the history component
+            # Get history using the recorder history module
             history_data = await self.hass.async_add_executor_job(
-                getattr(history, "get_significant_states"),
+                get_significant_states,
                 self.hass,
                 start,
                 now,
@@ -2024,7 +2024,11 @@ class AiAgentHaAgent:
                     # Get title - check yaml config, then use defaults
                     title = yaml_config.get("title")
                     if not title:
-                        title = "Overview" if url_path is None else (url_path or "Dashboard")
+                        title = (
+                            "Overview"
+                            if url_path is None
+                            else (url_path or "Dashboard")
+                        )
 
                     # Get icon - check yaml config, then use defaults
                     icon = yaml_config.get("icon")
@@ -2087,9 +2091,7 @@ class AiAgentHaAgent:
                 if dashboard_key in dashboards:
                     dashboard = dashboards[dashboard_key]
                     config = await dashboard.async_get_info()
-                    return (
-                        dict(config) if config else {"error": "No dashboard config"}
-                    )
+                    return dict(config) if config else {"error": "No dashboard config"}
                 else:
                     if dashboard_url is None:
                         return {"error": "Default dashboard not found"}
