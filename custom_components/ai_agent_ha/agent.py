@@ -1704,8 +1704,8 @@ class AiAgentHaAgent:
             result = []
             for entity_id_key, states in history_data.items():
                 for state in states:
-                    # Skip if not a proper State object
-                    if not hasattr(state, "entity_id"):
+                    # Skip if it's a dict (mypy type narrowing)
+                    if isinstance(state, dict):
                         continue
                     result.append(
                         {
