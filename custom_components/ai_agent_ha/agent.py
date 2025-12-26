@@ -2575,7 +2575,7 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
             return {"error": f"Error updating dashboard: {str(e)}"}
 
     async def process_query(
-        self, user_query: str, provider: Optional[str] = None
+        self, user_query: str, provider: Optional[str] = None, debug: bool = False
     ) -> Dict[str, Any]:
         """Process a user query with input validation and rate limiting."""
         try:
@@ -2654,11 +2654,21 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
             provider_settings = provider_config[selected_provider]
             token = self.config.get(provider_settings["token_key"])
 
+            def _with_debug(result: Dict[str, Any]) -> Dict[str, Any]:
+                """Attach a sanitized trace when UI requests debug info."""
+                if debug and "debug" not in result:
+                    result["debug"] = self._build_debug_trace(
+                        selected_provider,
+                        provider_settings,
+                        config.get("zai_endpoint", "general"),
+                    )
+                return result
+
             # Validate token/URL
             if not token:
                 error_msg = f"No {'URL' if selected_provider == 'local' else 'token'} configured for provider {selected_provider}"
                 _LOGGER.error(error_msg)
-                return {"success": False, "error": error_msg}
+                return _with_debug({"success": False, "error": error_msg})
 
             # Initialize client
             try:
@@ -2692,14 +2702,16 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
             except Exception as e:
                 error_msg = f"Error initializing {selected_provider} client: {str(e)}"
                 _LOGGER.error(error_msg)
-                return {"success": False, "error": error_msg}
+                return _with_debug({"success": False, "error": error_msg})
 
             # Process the query with rate limiting and retries
             if not self._check_rate_limit():
-                return {
-                    "success": False,
-                    "error": "Rate limit exceeded. Please wait before trying again.",
-                }
+                return _with_debug(
+                    {
+                        "success": False,
+                        "error": "Rate limit exceeded. Please wait before trying again.",
+                    }
+                )
 
             # Sanitize user input
             user_query = user_query.strip()[:1000]  # Limit length and trim whitespace
@@ -2707,7 +2719,7 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
             _LOGGER.debug("Processing new query: %s", user_query)
 
             # Check cache for identical query
-            cache_key = f"query_{hash(user_query)}"
+            cache_key = f"query_{hash(user_query)}_{provider}_{debug}"
             cached_result = self._get_cached_data(cache_key)
             if cached_result:
                 return (
@@ -2974,7 +2986,9 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
 
                             # Check if any data request resulted in an error
                             if isinstance(data, dict) and "error" in data:
-                                return {"success": False, "error": data["error"]}
+                                return _with_debug(
+                                    {"success": False, "error": data["error"]}
+                                )
                             elif isinstance(data, list) and any(
                                 "error" in item
                                 for item in data
@@ -2985,7 +2999,9 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                     for item in data
                                     if isinstance(item, dict) and "error" in item
                                 ]
-                                return {"success": False, "error": "; ".join(errors)}
+                                return _with_debug(
+                                    {"success": False, "error": "; ".join(errors)}
+                                )
 
                             _LOGGER.debug(
                                 "Retrieved data for request: %s",
@@ -3021,6 +3037,7 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                 "success": True,
                                 "answer": response_data.get("response", ""),
                             }
+                            result = _with_debug(result)
                             self._set_cached_data(cache_key, result)
                             return result
                         elif (
@@ -3045,6 +3062,7 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                 "success": True,
                                 "answer": json.dumps(response_data),
                             }
+                            result = _with_debug(result)
                             self._set_cached_data(cache_key, result)
                             return result
                         elif (
@@ -3069,6 +3087,7 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                 "success": True,
                                 "answer": json.dumps(response_data),
                             }
+                            result = _with_debug(result)
                             self._set_cached_data(cache_key, result)
                             return result
                         elif response_data.get("request_type") in [
@@ -3188,10 +3207,12 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                         _LOGGER.error(
                                             "Nested request returned unexpected data format"
                                         )
-                                        return {
-                                            "success": False,
-                                            "error": "Nested request returned unexpected data format",
-                                        }
+                                        return _with_debug(
+                                            {
+                                                "success": False,
+                                                "error": "Nested request returned unexpected data format",
+                                            }
+                                        )
 
                             # Handle backward compatibility with old format
                             if not domain or not service:
@@ -3242,7 +3263,9 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
 
                             # Check if service call resulted in an error
                             if isinstance(data, dict) and "error" in data:
-                                return {"success": False, "error": data["error"]}
+                                return _with_debug(
+                                    {"success": False, "error": data["error"]}
+                                )
 
                             _LOGGER.debug(
                                 "Service call completed: %s",
@@ -3256,16 +3279,20 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                     "content": json.dumps({"data": data}, default=str),
                                 }
                             )
+                            # Go to next iteration to continue the loop
                             continue
-                        else:
-                            _LOGGER.warning(
-                                "Unknown response type: %s",
-                                response_data.get("request_type"),
-                            )
-                            return {
+
+                        # Unknown request type
+                        _LOGGER.warning(
+                            "Unknown response type: %s",
+                            response_data.get("request_type"),
+                        )
+                        return _with_debug(
+                            {
                                 "success": False,
                                 "error": f"Unknown response type: {response_data.get('request_type')}",
                             }
+                        )
 
                     except json.JSONDecodeError as e:
                         # Check if this is a local provider that might have already wrapped the response
@@ -3354,10 +3381,12 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             _LOGGER.warning(
                                 "Detected corrupted automation suggestion response with repetitive text"
                             )
-                            result = {
-                                "success": False,
-                                "error": "AI generated corrupted automation response. Please try again with a more specific automation request.",
-                            }
+                            result = _with_debug(
+                                {
+                                    "success": False,
+                                    "error": "AI generated corrupted automation response. Please try again with a more specific automation request.",
+                                }
+                            )
                             self._set_cached_data(cache_key, result)
                             return result
 
@@ -3393,15 +3422,18 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                 "error": f"Invalid response format: {str(e)}",
                             }
 
+                        result = _with_debug(result)
                         self._set_cached_data(cache_key, result)
                         return result
 
                 except Exception as e:
                     _LOGGER.exception("Error processing AI response: %s", str(e))
-                    return {
-                        "success": False,
-                        "error": f"Error processing AI response: {str(e)}",
-                    }
+                    return _with_debug(
+                        {
+                            "success": False,
+                            "error": f"Error processing AI response: {str(e)}",
+                        }
+                    )
 
             # If we've reached max iterations without a final response
             _LOGGER.warning("Reached maximum iterations without final response")
@@ -3409,12 +3441,32 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                 "success": False,
                 "error": "Maximum iterations reached without final response",
             }
+            result = _with_debug(result)
             self._set_cached_data(cache_key, result)
             return result
 
         except Exception as e:
             _LOGGER.exception("Error in process_query: %s", str(e))
-            return {"success": False, "error": f"Error in process_query: {str(e)}"}
+            return _with_debug(
+                {"success": False, "error": f"Error in process_query: {str(e)}"}
+            )
+
+    def _build_debug_trace(
+        self,
+        provider: Optional[str],
+        provider_settings: Optional[Dict[str, Any]],
+        endpoint_type: Optional[str],
+    ) -> Dict[str, Any]:
+        """Return a sanitized snapshot of the HA↔AI conversation for UI display."""
+        history_tail = (
+            self.conversation_history[-20:] if self.conversation_history else []
+        )
+        return {
+            "provider": provider,
+            "model": provider_settings.get("model") if provider_settings else None,
+            "endpoint_type": endpoint_type,
+            "conversation": history_tail,
+        }
 
     async def _get_ai_response(self) -> str:
         """Get response from the selected AI provider with retries and rate limiting."""
