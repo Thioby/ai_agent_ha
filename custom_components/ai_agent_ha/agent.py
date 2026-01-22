@@ -864,15 +864,24 @@ class AnthropicOAuthClient(BaseAIClient):
             elif role == "assistant":
                 anthropic_messages.append({"role": "assistant", "content": content})
 
+        # Required prefix for OAuth access to Claude 4+ models
+        CLAUDE_CODE_SYSTEM_PREFIX = (
+            "You are Claude Code, Anthropic's official CLI for Claude."
+        )
+
+        # Prepend required prefix to system message
+        if system_message:
+            full_system = f"{CLAUDE_CODE_SYSTEM_PREFIX}\n\n{system_message}"
+        else:
+            full_system = CLAUDE_CODE_SYSTEM_PREFIX
+
         payload = {
             "model": self.model,
             "max_tokens": 8192,
             "temperature": 0.7,
             "messages": anthropic_messages,
+            "system": full_system,
         }
-
-        if system_message:
-            payload["system"] = system_message
 
         payload = self._transform_request(payload)
 
