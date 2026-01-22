@@ -2801,15 +2801,40 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                 },
             }
 
-            # Validate provider and get configuration
-            if selected_provider not in provider_config:
-                _LOGGER.warning(
-                    f"Invalid provider {selected_provider}, falling back to llama"
-                )
-                selected_provider = "llama"
+            # Handle anthropic_oauth separately (requires hass and config_entry)
+            if selected_provider == "anthropic_oauth":
+                if not self.config_entry:
+                    error_msg = "anthropic_oauth requires config_entry"
+                    _LOGGER.error(error_msg)
+                    return {"success": False, "error": error_msg}
 
-            provider_settings = provider_config[selected_provider]
-            token = self.config.get(provider_settings["token_key"])
+                model = models_config.get(
+                    "anthropic_oauth", "claude-sonnet-4-5-20250929"
+                )
+                try:
+                    self.ai_client = AnthropicOAuthClient(
+                        self.hass, self.config_entry, model
+                    )
+                    _LOGGER.debug(
+                        f"Initialized anthropic_oauth client with model {model}"
+                    )
+                except Exception as e:
+                    error_msg = f"Error initializing anthropic_oauth client: {str(e)}"
+                    _LOGGER.error(error_msg)
+                    return {"success": False, "error": error_msg}
+
+                # Skip the normal provider_config flow
+                provider_settings = {"model": model}
+            else:
+                # Validate provider and get configuration
+                if selected_provider not in provider_config:
+                    _LOGGER.warning(
+                        f"Invalid provider {selected_provider}, falling back to llama"
+                    )
+                    selected_provider = "llama"
+
+                provider_settings = provider_config[selected_provider]
+                token = self.config.get(provider_settings["token_key"])
 
             def _with_debug(result: Dict[str, Any]) -> Dict[str, Any]:
                 """Attach a sanitized trace when UI requests debug info."""
@@ -2821,45 +2846,49 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                     )
                 return result
 
-            # Validate token/URL
-            if not token:
-                error_msg = f"No {'URL' if selected_provider == 'local' else 'token'} configured for provider {selected_provider}"
-                _LOGGER.error(error_msg)
-                return _with_debug({"success": False, "error": error_msg})
+            # Skip token validation and client init for anthropic_oauth (already done above)
+            if selected_provider != "anthropic_oauth":
+                # Validate token/URL
+                if not token:
+                    error_msg = f"No {'URL' if selected_provider == 'local' else 'token'} configured for provider {selected_provider}"
+                    _LOGGER.error(error_msg)
+                    return _with_debug({"success": False, "error": error_msg})
 
-            # Initialize client
-            try:
-                if selected_provider == "zai":
-                    # ZaiClient takes (token, model, endpoint_type)
-                    endpoint_type = config.get("zai_endpoint", "general")
-                    self.ai_client = provider_settings["client_class"](
-                        token=token,
-                        model=provider_settings["model"],
-                        endpoint_type=endpoint_type,
+                # Initialize client
+                try:
+                    if selected_provider == "zai":
+                        # ZaiClient takes (token, model, endpoint_type)
+                        endpoint_type = config.get("zai_endpoint", "general")
+                        self.ai_client = provider_settings["client_class"](
+                            token=token,
+                            model=provider_settings["model"],
+                            endpoint_type=endpoint_type,
+                        )
+                        _LOGGER.debug(
+                            f"Initialized {selected_provider} client with model {provider_settings['model']}, endpoint_type {endpoint_type}"
+                        )
+                    elif selected_provider == "local":
+                        # LocalClient takes (url, model)
+                        self.ai_client = provider_settings["client_class"](
+                            url=token, model=provider_settings["model"]
+                        )
+                        _LOGGER.debug(
+                            f"Initialized {selected_provider} client with model {provider_settings['model']}"
+                        )
+                    else:
+                        # Other clients take (token, model)
+                        self.ai_client = provider_settings["client_class"](
+                            token=token, model=provider_settings["model"]
+                        )
+                        _LOGGER.debug(
+                            f"Initialized {selected_provider} client with model {provider_settings['model']}"
+                        )
+                except Exception as e:
+                    error_msg = (
+                        f"Error initializing {selected_provider} client: {str(e)}"
                     )
-                    _LOGGER.debug(
-                        f"Initialized {selected_provider} client with model {provider_settings['model']}, endpoint_type {endpoint_type}"
-                    )
-                elif selected_provider == "local":
-                    # LocalClient takes (url, model)
-                    self.ai_client = provider_settings["client_class"](
-                        url=token, model=provider_settings["model"]
-                    )
-                    _LOGGER.debug(
-                        f"Initialized {selected_provider} client with model {provider_settings['model']}"
-                    )
-                else:
-                    # Other clients take (token, model)
-                    self.ai_client = provider_settings["client_class"](
-                        token=token, model=provider_settings["model"]
-                    )
-                    _LOGGER.debug(
-                        f"Initialized {selected_provider} client with model {provider_settings['model']}"
-                    )
-            except Exception as e:
-                error_msg = f"Error initializing {selected_provider} client: {str(e)}"
-                _LOGGER.error(error_msg)
-                return _with_debug({"success": False, "error": error_msg})
+                    _LOGGER.error(error_msg)
+                    return _with_debug({"success": False, "error": error_msg})
 
             # Process the query with rate limiting and retries
             if not self._check_rate_limit():
