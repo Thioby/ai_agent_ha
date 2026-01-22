@@ -38,11 +38,12 @@ def generate_pkce() -> tuple[str, str]:
     return code_verifier, code_challenge
 
 
-def build_auth_url(challenge: str, mode: str = "max") -> str:
+def build_auth_url(challenge: str, verifier: str, mode: str = "max") -> str:
     """Build OAuth authorization URL.
 
     Args:
         challenge: PKCE code_challenge
+        verifier: PKCE code_verifier (used as state parameter)
         mode: "max" for claude.ai, "console" for console.anthropic.com
 
     Returns:
@@ -57,6 +58,7 @@ def build_auth_url(challenge: str, mode: str = "max") -> str:
         "scope": SCOPES,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
+        "state": verifier,
     }
     return f"{base}/oauth/authorize?{urlencode(params)}"
 
@@ -79,7 +81,7 @@ async def exchange_code(
 
     async with session.post(
         TOKEN_URL,
-        data={
+        json={
             "code": parts[0],
             "state": parts[1] if len(parts) > 1 else "",
             "grant_type": "authorization_code",
@@ -87,7 +89,7 @@ async def exchange_code(
             "redirect_uri": REDIRECT_URI,
             "code_verifier": verifier,
         },
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={"Content-Type": "application/json"},
     ) as resp:
         if resp.status != 200:
             error_text = await resp.text()
@@ -122,12 +124,12 @@ async def refresh_token(session: aiohttp.ClientSession, refresh: str) -> dict:
     """
     async with session.post(
         TOKEN_URL,
-        data={
+        json={
             "grant_type": "refresh_token",
             "refresh_token": refresh,
             "client_id": CLIENT_ID,
         },
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={"Content-Type": "application/json"},
     ) as resp:
         if resp.status != 200:
             error_text = await resp.text()

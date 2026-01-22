@@ -818,10 +818,16 @@ class AnthropicOAuthClient(BaseAIClient):
         if "system" in payload:
             if isinstance(payload["system"], str):
                 payload["system"] = payload["system"].replace("OpenCode", "Claude Code")
+                payload["system"] = re.sub(
+                    r"opencode", "Claude", payload["system"], flags=re.IGNORECASE
+                )
             elif isinstance(payload["system"], list):
                 for item in payload["system"]:
                     if item.get("type") == "text" and "text" in item:
                         item["text"] = item["text"].replace("OpenCode", "Claude Code")
+                        item["text"] = re.sub(
+                            r"opencode", "Claude", item["text"], flags=re.IGNORECASE
+                        )
 
         return payload
 
@@ -840,8 +846,8 @@ class AnthropicOAuthClient(BaseAIClient):
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
-            "anthropic-version": "2023-06-01",
             "anthropic-beta": "oauth-2025-04-20,interleaved-thinking-2025-05-14",
+            "User-Agent": "claude-cli/2.1.2 (external, cli)",
         }
 
         system_message = None

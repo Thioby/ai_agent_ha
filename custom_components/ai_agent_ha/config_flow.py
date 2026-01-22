@@ -364,7 +364,7 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
             self._pkce_verifier = verifier
             self._pkce_challenge = challenge
 
-        auth_url = build_auth_url(self._pkce_challenge, mode="max")
+        auth_url = build_auth_url(self._pkce_challenge, self._pkce_verifier, mode="max")
         return self.async_external_step(step_id="anthropic_oauth_wait", url=auth_url)
 
     async def async_step_anthropic_oauth_wait(self, user_input=None):
