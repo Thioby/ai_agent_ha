@@ -847,7 +847,7 @@ class AnthropicOAuthClient(BaseAIClient):
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
             "anthropic-version": "2023-06-01",
-            "anthropic-beta": "oauth-2025-04-20,interleaved-thinking-2025-05-14",
+            "anthropic-beta": "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14",
             "User-Agent": "claude-cli/2.1.2 (external, cli)",
         }
 
