@@ -865,22 +865,25 @@ class AnthropicOAuthClient(BaseAIClient):
                 anthropic_messages.append({"role": "assistant", "content": content})
 
         # Required prefix for OAuth access to Claude 4+ models
+        # MUST be sent as array of text blocks, not a single string
         CLAUDE_CODE_SYSTEM_PREFIX = (
             "You are Claude Code, Anthropic's official CLI for Claude."
         )
 
-        # Prepend required prefix to system message
+        # Build system as array with Claude Code identifier first (required for OAuth)
+        system_blocks = [
+            {"type": "text", "text": CLAUDE_CODE_SYSTEM_PREFIX},
+        ]
+        # Add actual system message as second block if present
         if system_message:
-            full_system = f"{CLAUDE_CODE_SYSTEM_PREFIX}\n\n{system_message}"
-        else:
-            full_system = CLAUDE_CODE_SYSTEM_PREFIX
+            system_blocks.append({"type": "text", "text": system_message})
 
         payload = {
             "model": self.model,
             "max_tokens": 8192,
             "temperature": 0.7,
             "messages": anthropic_messages,
-            "system": full_system,
+            "system": system_blocks,
         }
 
         payload = self._transform_request(payload)
