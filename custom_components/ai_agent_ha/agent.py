@@ -844,11 +844,10 @@ class AnthropicOAuthClient(BaseAIClient):
         )
 
         headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
+            "authorization": f"Bearer {access_token}",
+            "content-type": "application/json",
             "anthropic-version": "2023-06-01",
-            "anthropic-beta": "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14",
-            "User-Agent": "claude-cli/2.1.2 (external, cli)",
+            "anthropic-beta": "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
         }
 
         system_message = None
@@ -883,7 +882,7 @@ class AnthropicOAuthClient(BaseAIClient):
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f"{self.api_url}?beta=true",
+                self.api_url,
                 headers=headers,
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=300),
