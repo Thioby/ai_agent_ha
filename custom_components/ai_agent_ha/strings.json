@@ -11,6 +11,17 @@
                     "ai_provider": "Choose your preferred AI provider"
                 }
             },
+            "anthropic_oauth": {
+                "title": "Anthropic OAuth",
+                "description": "Authorize with your Claude Pro/Max account:\n\n[Click here to authorize]({auth_url})\n\nAfter authorization, copy the code and continue."
+            },
+            "anthropic_oauth_code": {
+                "title": "Enter Authorization Code",
+                "description": "Paste the authorization code from your browser:",
+                "data": {
+                    "code": "Authorization Code"
+                }
+            },
             "configure": {
                 "title": "Configure {provider}",
                 "description": "Enter your {token_label} and optionally select a model",
@@ -38,6 +49,7 @@
         },
         "error": {
             "invalid_api_key": "Invalid API key format",
+            "oauth_failed": "OAuth authorization failed. Please try again.",
             "unknown": "Unknown error occurred",
             "llama_token": "Llama API token is required",
             "openai_token": "OpenAI API key is required",

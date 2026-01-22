@@ -86,6 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "gemini",
             "openrouter",
             "anthropic",
+            "anthropic_oauth",
             "alter",
             "zai",
             "local",
@@ -114,7 +115,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 ]
             },
         )
-        hass.data[DOMAIN]["agents"][provider] = AiAgentHaAgent(hass, config_data)
+        if provider == "anthropic_oauth":
+            hass.data[DOMAIN]["agents"][provider] = AiAgentHaAgent(
+                hass, config_data, entry
+            )
+        else:
+            hass.data[DOMAIN]["agents"][provider] = AiAgentHaAgent(hass, config_data)
 
         _LOGGER.info("Successfully set up AI Agent HA for provider: %s", provider)
 

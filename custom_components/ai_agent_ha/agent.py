@@ -755,6 +755,151 @@ class AnthropicClient(BaseAIClient):
                 return str(data)
 
 
+class AnthropicOAuthClient(BaseAIClient):
+    TOOL_PREFIX = "mcp_"
+
+    def __init__(self, hass, config_entry, model="claude-sonnet-4-5-20250929"):
+        import asyncio
+
+        self.hass = hass
+        self.config_entry = config_entry
+        self.model = model
+        self.api_url = "https://api.anthropic.com/v1/messages"
+        self._oauth_data = dict(config_entry.data.get("anthropic_oauth", {}))
+        self._refresh_lock = asyncio.Lock()
+
+    async def _get_valid_token(self) -> str:
+        from .oauth import refresh_token, OAuthRefreshError
+        import time
+
+        async with self._refresh_lock:
+            if time.time() < self._oauth_data.get("expires_at", 0) - 300:
+                return self._oauth_data["access_token"]
+
+            _LOGGER.debug("Refreshing Anthropic OAuth token")
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    new_tokens = await refresh_token(
+                        session, self._oauth_data["refresh_token"]
+                    )
+            except OAuthRefreshError as e:
+                _LOGGER.error("OAuth refresh failed: %s", e)
+                raise
+
+            self._oauth_data.update(new_tokens)
+
+            new_data = {**self.config_entry.data, "anthropic_oauth": self._oauth_data}
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, data=new_data
+            )
+
+            return new_tokens["access_token"]
+
+    def _transform_request(self, payload: dict) -> dict:
+        import copy
+        import re
+
+        payload = copy.deepcopy(payload)
+
+        if "tools" in payload:
+            payload["tools"] = [
+                {**t, "name": f"{self.TOOL_PREFIX}{t['name']}"}
+                for t in payload["tools"]
+            ]
+
+        if "messages" in payload:
+            for msg in payload["messages"]:
+                if isinstance(msg.get("content"), list):
+                    for block in msg["content"]:
+                        if block.get("type") == "tool_use" and "name" in block:
+                            block["name"] = f"{self.TOOL_PREFIX}{block['name']}"
+
+        if "system" in payload:
+            if isinstance(payload["system"], str):
+                payload["system"] = payload["system"].replace("OpenCode", "Claude Code")
+            elif isinstance(payload["system"], list):
+                for item in payload["system"]:
+                    if item.get("type") == "text" and "text" in item:
+                        item["text"] = item["text"].replace("OpenCode", "Claude Code")
+
+        return payload
+
+    def _transform_response(self, text: str) -> str:
+        import re
+
+        return re.sub(r'"name"\s*:\s*"mcp_([^"]+)"', r'"name": "\1"', text)
+
+    async def get_response(self, messages, **kwargs):
+        access_token = await self._get_valid_token()
+
+        _LOGGER.debug(
+            "Making OAuth request to Anthropic API with model: %s", self.model
+        )
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "oauth-2025-04-20,interleaved-thinking-2025-05-14",
+        }
+
+        system_message = None
+        anthropic_messages = []
+
+        for message in messages:
+            role = message.get("role", "user")
+            content = message.get("content", "")
+
+            if role == "system":
+                system_message = content
+            elif role == "user":
+                anthropic_messages.append({"role": "user", "content": content})
+            elif role == "assistant":
+                anthropic_messages.append({"role": "assistant", "content": content})
+
+        payload = {
+            "model": self.model,
+            "max_tokens": 8192,
+            "temperature": 0.7,
+            "messages": anthropic_messages,
+        }
+
+        if system_message:
+            payload["system"] = system_message
+
+        payload = self._transform_request(payload)
+
+        _LOGGER.debug(
+            "Anthropic OAuth request payload: %s", json.dumps(payload, indent=2)
+        )
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.api_url}?beta=true",
+                headers=headers,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=300),
+            ) as resp:
+                response_text = await resp.text()
+
+                if resp.status != 200:
+                    _LOGGER.error(
+                        "Anthropic OAuth API error %d: %s", resp.status, response_text
+                    )
+                    raise Exception(f"Anthropic OAuth API error {resp.status}")
+
+                response_text = self._transform_response(response_text)
+                data = json.loads(response_text)
+
+                content_blocks = data.get("content", [])
+                if content_blocks and isinstance(content_blocks, list):
+                    for block in content_blocks:
+                        if block.get("type") == "text":
+                            return block.get("text", str(data))
+                return str(data)
+
+
 class OpenRouterClient(BaseAIClient):
     def __init__(self, token, model="openai/gpt-4o"):
         self.token = token
@@ -1138,10 +1283,11 @@ class AiAgentHaAgent:
         ),
     }
 
-    def __init__(self, hass: HomeAssistant, config: Dict[str, Any]):
+    def __init__(self, hass: HomeAssistant, config: Dict[str, Any], config_entry=None):
         """Initialize the agent with provider selection."""
         self.hass = hass
         self.config = config
+        self.config_entry = config_entry
         self.conversation_history: List[Dict[str, Any]] = []
         self._cache: Dict[str, Any] = {}
         self.ai_client: BaseAIClient
@@ -1180,6 +1326,11 @@ class AiAgentHaAgent:
         elif provider == "anthropic":
             model = models_config.get("anthropic", "claude-sonnet-4-5-20250929")
             self.ai_client = AnthropicClient(config.get("anthropic_token"), model)
+        elif provider == "anthropic_oauth":
+            model = models_config.get("anthropic_oauth", "claude-sonnet-4-5-20250929")
+            if not config_entry:
+                raise Exception("anthropic_oauth requires config_entry")
+            self.ai_client = AnthropicOAuthClient(hass, config_entry, model)
         elif provider == "alter":
             model = models_config.get("alter", "")
             self.ai_client = AlterClient(config.get("alter_token"), model)
@@ -2254,9 +2405,9 @@ class AiAgentHaAgent:
                             # Dashboard configuration to add
                             dashboard_yaml = f"""    {url_path}:
       mode: yaml
-      title: {dashboard_config['title']}
-      icon: {dashboard_config.get('icon', 'mdi:view-dashboard')}
-      show_in_sidebar: {str(dashboard_config.get('show_in_sidebar', True)).lower()}
+      title: {dashboard_config["title"]}
+      icon: {dashboard_config.get("icon", "mdi:view-dashboard")}
+      show_in_sidebar: {str(dashboard_config.get("show_in_sidebar", True)).lower()}
       filename: ui-lovelace-{url_path}.yaml"""
 
                             # Check if lovelace section exists
@@ -2360,9 +2511,9 @@ lovelace:
   dashboards:
     {url_path}:
       mode: yaml
-      title: {dashboard_config['title']}
-      icon: {dashboard_config.get('icon', 'mdi:view-dashboard')}
-      show_in_sidebar: {str(dashboard_config.get('show_in_sidebar', True)).lower()}
+      title: {dashboard_config["title"]}
+      icon: {dashboard_config.get("icon", "mdi:view-dashboard")}
+      show_in_sidebar: {str(dashboard_config.get("show_in_sidebar", True)).lower()}
       filename: ui-lovelace-{url_path}.yaml
 """
                                     with open(config_file, "a") as f:
@@ -2371,9 +2522,9 @@ lovelace:
                                     # Add to existing lovelace section (simple approach)
                                     dashboard_entry = f"""    {url_path}:
       mode: yaml
-      title: {dashboard_config['title']}
-      icon: {dashboard_config.get('icon', 'mdi:view-dashboard')}
-      show_in_sidebar: {str(dashboard_config.get('show_in_sidebar', True)).lower()}
+      title: {dashboard_config["title"]}
+      icon: {dashboard_config.get("icon", "mdi:view-dashboard")}
+      show_in_sidebar: {str(dashboard_config.get("show_in_sidebar", True)).lower()}
       filename: ui-lovelace-{url_path}.yaml
 """
                                     # Find the dashboards section and add to it
@@ -2420,7 +2571,7 @@ lovelace:
                     )
 
                     if config_updated:
-                        success_message = f"""Dashboard '{dashboard_config['title']}' created successfully!
+                        success_message = f"""Dashboard '{dashboard_config["title"]}' created successfully!
 
 ✅ Dashboard file created: ui-lovelace-{url_path}.yaml
 ✅ Configuration.yaml updated automatically
@@ -2435,7 +2586,7 @@ lovelace:
                         }
                     else:
                         # Config update failed, provide manual instructions
-                        config_instructions = f"""Dashboard '{dashboard_config['title']}' created successfully!
+                        config_instructions = f"""Dashboard '{dashboard_config["title"]}' created successfully!
 
 ✅ Dashboard file created: ui-lovelace-{url_path}.yaml
 ⚠️  Could not automatically update configuration.yaml
@@ -2446,9 +2597,9 @@ lovelace:
   dashboards:
     {url_path}:
       mode: yaml
-      title: {dashboard_config['title']}
-      icon: {dashboard_config.get('icon', 'mdi:view-dashboard')}
-      show_in_sidebar: {str(dashboard_config.get('show_in_sidebar', True)).lower()}
+      title: {dashboard_config["title"]}
+      icon: {dashboard_config.get("icon", "mdi:view-dashboard")}
+      show_in_sidebar: {str(dashboard_config.get("show_in_sidebar", True)).lower()}
       filename: ui-lovelace-{url_path}.yaml
 
 Then restart Home Assistant to see your new dashboard in the sidebar."""
@@ -2465,7 +2616,7 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                         "Error updating configuration.yaml: %s", str(config_error)
                     )
                     # Provide manual instructions as fallback
-                    config_instructions = f"""Dashboard '{dashboard_config['title']}' created successfully!
+                    config_instructions = f"""Dashboard '{dashboard_config["title"]}' created successfully!
 
 ✅ Dashboard file created: ui-lovelace-{url_path}.yaml
 ⚠️  Could not automatically update configuration.yaml
@@ -2476,9 +2627,9 @@ lovelace:
   dashboards:
     {url_path}:
       mode: yaml
-      title: {dashboard_config['title']}
-      icon: {dashboard_config.get('icon', 'mdi:view-dashboard')}
-      show_in_sidebar: {str(dashboard_config.get('show_in_sidebar', True)).lower()}
+      title: {dashboard_config["title"]}
+      icon: {dashboard_config.get("icon", "mdi:view-dashboard")}
+      show_in_sidebar: {str(dashboard_config.get("show_in_sidebar", True)).lower()}
       filename: ui-lovelace-{url_path}.yaml
 
 Then restart Home Assistant to see your new dashboard in the sidebar."""

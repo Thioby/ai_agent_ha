@@ -22,6 +22,7 @@ AI_PROVIDERS = [
     "gemini",
     "openrouter",
     "anthropic",
+    "anthropic_oauth",
     "alter",
     "zai",
     "local",
@@ -32,3 +33,7 @@ CONF_MODELS = "models"
 
 # Supported AI providers
 DEFAULT_AI_PROVIDER = "openai"
+
+# Anthropic OAuth
+CONF_ANTHROPIC_OAUTH = "anthropic_oauth"
+ANTHROPIC_OAUTH_PROVIDER = "anthropic_oauth"

@@ -15,7 +15,10 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
 )
 
+import aiohttp
+
 from .const import CONF_LOCAL_MODEL, CONF_LOCAL_URL, DOMAIN
+from .oauth import generate_pkce, build_auth_url, exchange_code
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +28,7 @@ PROVIDERS = {
     "gemini": "Google Gemini",
     "openrouter": "OpenRouter",
     "anthropic": "Anthropic (Claude)",
+    "anthropic_oauth": "Anthropic (Claude Pro/Max)",
     "alter": "Alter",
     "zai": "z.ai",
     "local": "Local Model",
@@ -178,6 +182,10 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
             self._abort_if_unique_id_configured()
 
             self.config_data = {"ai_provider": user_input["ai_provider"]}
+
+            if user_input["ai_provider"] == "anthropic_oauth":
+                return await self.async_step_anthropic_oauth()
+
             return await self.async_step_configure()
 
         # Show provider selection form
@@ -348,6 +356,57 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
                 "token_label": token_label,
                 "provider": PROVIDERS[provider],
             },
+        )
+
+    async def async_step_anthropic_oauth(self, user_input=None):
+        if user_input is not None:
+            return await self.async_step_anthropic_oauth_code()
+
+        verifier, challenge = generate_pkce()
+        self._pkce_verifier = verifier
+        auth_url = build_auth_url(challenge, mode="max")
+
+        return self.async_show_form(
+            step_id="anthropic_oauth",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "auth_url": auth_url,
+            },
+        )
+
+    async def async_step_anthropic_oauth_code(self, user_input=None):
+        errors = {}
+
+        if user_input is not None:
+            code = user_input.get("code", "").strip()
+
+            if code:
+                async with aiohttp.ClientSession() as session:
+                    result = await exchange_code(session, code, self._pkce_verifier)
+
+                if "error" in result:
+                    errors["base"] = "oauth_failed"
+                else:
+                    return self.async_create_entry(
+                        title="AI Agent HA (Anthropic OAuth)",
+                        data={
+                            "ai_provider": "anthropic_oauth",
+                            "anthropic_oauth": {
+                                "access_token": result["access_token"],
+                                "refresh_token": result["refresh_token"],
+                                "expires_at": result["expires_at"],
+                            },
+                        },
+                    )
+
+        return self.async_show_form(
+            step_id="anthropic_oauth_code",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("code"): TextSelector(TextSelectorConfig(type="text")),
+                }
+            ),
+            errors=errors,
         )
 
 
