@@ -11,6 +11,16 @@
                     "ai_provider": "Choose your preferred AI provider"
                 }
             },
+            "anthropic_oauth": {
+                "title": "Authorize with Claude",
+                "description": "1. Click the link to authorize: [Open Claude Authorization]({auth_url})\n2. After authorizing, copy the code shown\n3. Paste it below and click Submit",
+                "data": {
+                    "code": "Authorization Code"
+                },
+                "data_description": {
+                    "code": "Paste the authorization code from Claude"
+                }
+            },
             "configure": {
                 "title": "Configure {provider}",
                 "description": "Enter your {token_label} and optionally select a model",
@@ -38,6 +48,8 @@
         },
         "error": {
             "invalid_api_key": "Invalid API key format",
+            "oauth_failed": "OAuth authorization failed. Please try again.",
+            "required": "This field is required",
             "unknown": "Unknown error occurred",
             "llama_token": "Llama API token is required",
             "openai_token": "OpenAI API key is required",
@@ -47,7 +59,8 @@
             "alter_token": "Alter API key is required"
         },
         "abort": {
-            "already_configured": "AI Agent HA is already configured"
+            "already_configured": "AI Agent HA is already configured",
+            "oauth_reconfigure_not_supported": "To reconfigure Anthropic OAuth, please delete and re-add the integration"
         }
     },
     "options": {
