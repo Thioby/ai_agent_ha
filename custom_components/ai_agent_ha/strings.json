@@ -11,9 +11,9 @@
                     "ai_provider": "Choose your preferred AI provider"
                 }
             },
-            "anthropic_oauth": {
-                "title": "Anthropic OAuth",
-                "description": "Authorize with your Claude Pro/Max account:\n\n[Click here to authorize]({auth_url})\n\nAfter authorization, copy the code and continue."
+            "anthropic_oauth_wait": {
+                "title": "Authorize with Claude",
+                "description": "A new window will open. Please authorize with your Claude Pro/Max account, then copy the code shown after authorization."
             },
             "anthropic_oauth_code": {
                 "title": "Enter Authorization Code",

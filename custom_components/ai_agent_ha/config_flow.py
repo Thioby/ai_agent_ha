@@ -359,20 +359,16 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
         )
 
     async def async_step_anthropic_oauth(self, user_input=None):
-        if user_input is not None:
-            return await self.async_step_anthropic_oauth_code()
+        if not hasattr(self, "_pkce_verifier") or self._pkce_verifier is None:
+            verifier, challenge = generate_pkce()
+            self._pkce_verifier = verifier
+            self._pkce_challenge = challenge
 
-        verifier, challenge = generate_pkce()
-        self._pkce_verifier = verifier
-        auth_url = build_auth_url(challenge, mode="max")
+        auth_url = build_auth_url(self._pkce_challenge, mode="max")
+        return self.async_external_step(step_id="anthropic_oauth_wait", url=auth_url)
 
-        return self.async_show_form(
-            step_id="anthropic_oauth",
-            data_schema=vol.Schema({}),
-            description_placeholders={
-                "auth_url": auth_url,
-            },
-        )
+    async def async_step_anthropic_oauth_wait(self, user_input=None):
+        return self.async_external_step_done(next_step_id="anthropic_oauth_code")
 
     async def async_step_anthropic_oauth_code(self, user_input=None):
         errors = {}
