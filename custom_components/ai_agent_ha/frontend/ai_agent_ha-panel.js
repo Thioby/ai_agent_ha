@@ -12,6 +12,7 @@ const PROVIDERS = {
   gemini: "Google Gemini",
   openrouter: "OpenRouter",
   anthropic: "Anthropic",
+  anthropic_oauth: "Claude Pro/Max",
   alter: "Alter",
   zai: "z.ai",
   local: "Local Model",
