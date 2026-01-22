@@ -106,12 +106,23 @@ For detailed dashboard creation documentation, see: [Dashboard Creation Guide](d
 - **Setup**: Get API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
 
 ### Anthropic (Claude)
-- **Models**: Claude 3.5 Sonnet, Claude 3.5 Haiku, Claude 3 Opus, Claude 3 Sonnet, Claude 3 Haiku
+- **Models**: Claude Sonnet 4.5, Claude 3.5 Sonnet, Claude 3.5 Haiku, Claude 3 Opus
 - **Setup**: Get API key from [Anthropic Console](https://docs.anthropic.com/en/docs/get-started)
 - **Popular Models**:
-  - `claude-3-5-sonnet-20241022` (Latest and most capable)
+  - `claude-sonnet-4-5-20250929` (Latest and most capable)
+  - `claude-3-5-sonnet-20241022` (Previous generation)
   - `claude-3-5-haiku-20241022` (Fast and efficient)
-  - `claude-3-opus-20240229` (Most powerful for complex tasks)
+
+### Anthropic OAuth (Claude Pro/Max)
+- **Authentication**: OAuth 2.0 with PKCE (no API key required)
+- **Subscription**: Requires Claude Pro or Max subscription
+- **Model**: `claude-sonnet-4-5-20250929` (default)
+- **Setup**: 
+  1. Select "Anthropic (Claude Pro/Max)" during integration setup
+  2. Click the authorization link to open claude.ai
+  3. Authorize the application
+  4. Copy the code and paste it back in Home Assistant
+- **Benefits**: Use your existing Claude subscription without API costs
 
 ### OpenRouter
 - **Models**: Access to 100+ models including Claude, Llama, Mistral, and more
@@ -177,7 +188,8 @@ The integration uses a two-step configuration process:
 Select your preferred AI provider from the dropdown:
 - OpenAI
 - Google Gemini
-- Anthropic (Claude)
+- Anthropic (Claude) - API key
+- Anthropic (Claude Pro/Max) - OAuth (subscription)
 - OpenRouter
 - Alter
 - z.ai
