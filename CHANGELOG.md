@@ -7,16 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **CRITICAL**: Fixed Anthropic API system prompt being overwritten by data payloads
-  - Data responses now correctly use "user" role instead of "system" role
-  - Ensures Claude receives all formatting instructions for dashboard/automation creation
-  - Resolves issue where Claude would return YAML in `final_response` instead of JSON with `dashboard_suggestion`
-- Fixed climate dashboard creation for users with only temperature/humidity sensors (no climate.* entities)
-  - Added `get_entities_by_device_class()` helper function
-  - Added `get_climate_related_entities()` to combine climate.* entities with temperature/humidity sensors
-
 ### Added
+- **Anthropic OAuth (Claude Pro/Max)** - Use your Claude Pro or Max subscription instead of API keys
+  - OAuth 2.0 with PKCE authentication flow
+  - Automatic token refresh with race condition protection
+  - No API costs - uses your existing Claude subscription
+  - Setup: Select "Anthropic (Claude Pro/Max)" → Authorize → Paste code
+  - New files: `oauth.py` for OAuth logic, `AnthropicOAuthClient` in `agent.py`
+  - Required system prompt format (array of text blocks) for OAuth compatibility
+  - Beta headers: `oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14`
 - `get_entities_by_device_class(device_class, domain)` function to filter entities by device_class attribute
 - `get_climate_related_entities()` function for comprehensive climate dashboard support
   - Includes climate.* entities (thermostats, HVAC)
@@ -32,6 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced `get_entity_registry()` to include device_class, state_class, and unit_of_measurement attributes
 - Device class guidance in system prompts for improved AI understanding
 - Unit tests for new climate-related functions and critical system prompt fix
+
+### Fixed
+- **CRITICAL**: Fixed Anthropic API system prompt being overwritten by data payloads
+  - Data responses now correctly use "user" role instead of "system" role
+  - Ensures Claude receives all formatting instructions for dashboard/automation creation
+  - Resolves issue where Claude would return YAML in `final_response` instead of JSON with `dashboard_suggestion`
+- Fixed climate dashboard creation for users with only temperature/humidity sensors (no climate.* entities)
+  - Added `get_entities_by_device_class()` helper function
+  - Added `get_climate_related_entities()` to combine climate.* entities with temperature/humidity sensors
 
 ## [0.99.6] - 2025-11-05
 ### Fixed
