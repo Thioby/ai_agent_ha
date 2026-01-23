@@ -39,6 +39,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import CONF_WEATHER_ENTITY, DOMAIN
+from .tools import ToolRegistry, get_tools_system_prompt, execute_tool
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1070,6 +1071,18 @@ class ZaiClient(BaseAIClient):
 class AiAgentHaAgent:
     """Agent for handling queries with dynamic data requests and multiple AI providers."""
 
+    # Web tools prompt section (shared between SYSTEM_PROMPT and SYSTEM_PROMPT_LOCAL)
+    _WEB_TOOLS_PROMPT = (
+        "WEB TOOLS (for fetching external information):\n"
+        "- web_fetch(url, format?): Fetch content from a URL and return as markdown (default), text, or html\n"
+        "  Use for web research, reading documentation, getting external data\n"
+        '  Example: {"request_type": "web_fetch", "parameters": {"url": "https://example.com", "format": "markdown"}}\n'
+        "- web_search(query, num_results?, type?): Search the web for current information\n"
+        "  Returns content from relevant websites. Use for current events, recent data\n"
+        '  Example: {"request_type": "web_search", "parameters": {"query": "latest home automation news", "num_results": 5}}\n'
+        "  Types: 'auto' (balanced), 'fast' (quick), 'deep' (comprehensive)\n\n"
+    )
+
     SYSTEM_PROMPT = {
         "role": "system",
         "content": (
@@ -1099,7 +1112,8 @@ class AiAgentHaAgent:
             "- create_automation(automation): Create a new automation with the provided configuration\n"
             "- create_dashboard(dashboard_config): Create a new dashboard with the provided configuration\n"
             "- update_dashboard(dashboard_url, dashboard_config): Update an existing dashboard configuration\n\n"
-            "IMPORTANT DEVICE_CLASS GUIDANCE:\n"
+            + _WEB_TOOLS_PROMPT
+            + "IMPORTANT DEVICE_CLASS GUIDANCE:\n"
             "- Many sensors have a 'device_class' attribute (temperature, humidity, motion, etc.)\n"
             "- Use get_climate_related_entities() for climate dashboards (includes climate.* entities and temperature/humidity sensors)\n"
             "- Use get_entities_by_device_class(device_class) to filter by device_class (e.g., 'temperature', 'humidity', 'motion')\n"
@@ -1214,7 +1228,8 @@ class AiAgentHaAgent:
             "- create_automation(automation): Create a new automation with the provided configuration\n"
             "- create_dashboard(dashboard_config): Create a new dashboard with the provided configuration\n"
             "- update_dashboard(dashboard_url, dashboard_config): Update an existing dashboard configuration\n\n"
-            "IMPORTANT DEVICE_CLASS GUIDANCE:\n"
+            + _WEB_TOOLS_PROMPT
+            + "IMPORTANT DEVICE_CLASS GUIDANCE:\n"
             "- Many sensors have a 'device_class' attribute (temperature, humidity, motion, etc.)\n"
             "- Use get_climate_related_entities() for climate dashboards (includes climate.* entities and temperature/humidity sensors)\n"
             "- Use get_entities_by_device_class(device_class) to filter by device_class (e.g., 'temperature', 'humidity', 'motion')\n"
@@ -3112,6 +3127,9 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             "create_automation",
                             "create_dashboard",
                             "update_dashboard",
+                            # Web tools
+                            "web_fetch",
+                            "web_search",
                         ]
 
                         if (
@@ -3218,6 +3236,51 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                     parameters.get("dashboard_url"),
                                     parameters.get("dashboard_config"),
                                 )
+                            elif request_type == "web_fetch":
+                                # Execute web_fetch tool
+                                result = await execute_tool(
+                                    "web_fetch",
+                                    {
+                                        "url": parameters.get("url"),
+                                        "format": parameters.get("format", "markdown"),
+                                        "timeout": parameters.get("timeout", 30),
+                                    },
+                                    hass=self.hass,
+                                    config=self.config,
+                                )
+                                if result.success:
+                                    data = {
+                                        "content": result.output,
+                                        "title": result.title,
+                                        "metadata": result.metadata,
+                                    }
+                                else:
+                                    data = {"error": result.error or "Web fetch failed"}
+                            elif request_type == "web_search":
+                                # Execute web_search tool
+                                result = await execute_tool(
+                                    "web_search",
+                                    {
+                                        "query": parameters.get("query"),
+                                        "num_results": parameters.get("num_results", 8),
+                                        "type": parameters.get("type", "auto"),
+                                        "livecrawl": parameters.get(
+                                            "livecrawl", "fallback"
+                                        ),
+                                    },
+                                    hass=self.hass,
+                                    config=self.config,
+                                )
+                                if result.success:
+                                    data = {
+                                        "results": result.output,
+                                        "title": result.title,
+                                        "metadata": result.metadata,
+                                    }
+                                else:
+                                    data = {
+                                        "error": result.error or "Web search failed"
+                                    }
                             else:
                                 data = {
                                     "error": f"Unknown request type: {request_type}"
