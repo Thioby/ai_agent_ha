@@ -3284,7 +3284,7 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                 },
             }
 
-            # Handle anthropic_oauth separately (requires hass and config_entry)
+            # Handle OAuth providers separately (requires hass and config_entry)
             if selected_provider == "anthropic_oauth":
                 if not self.config_entry:
                     error_msg = "anthropic_oauth requires config_entry"
@@ -3303,6 +3303,25 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                     )
                 except Exception as e:
                     error_msg = f"Error initializing anthropic_oauth client: {str(e)}"
+                    _LOGGER.error(error_msg)
+                    return {"success": False, "error": error_msg}
+
+                # Skip the normal provider_config flow
+                provider_settings = {"model": model}
+            elif selected_provider == "gemini_oauth":
+                if not self.config_entry:
+                    error_msg = "gemini_oauth requires config_entry"
+                    _LOGGER.error(error_msg)
+                    return {"success": False, "error": error_msg}
+
+                model = models_config.get("gemini_oauth", "gemini-3-pro-preview")
+                try:
+                    self.ai_client = GeminiOAuthClient(
+                        self.hass, self.config_entry, model
+                    )
+                    _LOGGER.debug(f"Initialized gemini_oauth client with model {model}")
+                except Exception as e:
+                    error_msg = f"Error initializing gemini_oauth client: {str(e)}"
                     _LOGGER.error(error_msg)
                     return {"success": False, "error": error_msg}
 
@@ -3329,8 +3348,8 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                     )
                 return result
 
-            # Skip token validation and client init for anthropic_oauth (already done above)
-            if selected_provider != "anthropic_oauth":
+            # Skip token validation and client init for OAuth providers (already done above)
+            if selected_provider not in ("anthropic_oauth", "gemini_oauth"):
                 # Validate token/URL
                 if not token:
                     error_msg = f"No {'URL' if selected_provider == 'local' else 'token'} configured for provider {selected_provider}"
