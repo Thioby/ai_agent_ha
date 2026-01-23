@@ -713,11 +713,10 @@ class AnthropicClient(BaseAIClient):
             content = message.get("content", "")
 
             if role == "system":
-                # Anthropic uses a separate system parameter
                 system_message = content
-            elif role == "user":
+            elif role == "user" and content:
                 anthropic_messages.append({"role": "user", "content": content})
-            elif role == "assistant":
+            elif role == "assistant" and content:
                 anthropic_messages.append({"role": "assistant", "content": content})
 
         payload = {
@@ -859,9 +858,9 @@ class AnthropicOAuthClient(BaseAIClient):
 
             if role == "system":
                 system_message = content
-            elif role == "user":
+            elif role == "user" and content:
                 anthropic_messages.append({"role": "user", "content": content})
-            elif role == "assistant":
+            elif role == "assistant" and content:
                 anthropic_messages.append({"role": "assistant", "content": content})
 
         # Required prefix for OAuth access to Claude 4+ models
@@ -2936,9 +2935,11 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
 
             _LOGGER.debug("Processing new query: %s", user_query)
 
+            # Generate cache key (always needed for later caching)
+            cache_key = f"query_{hash(user_query)}_{provider}_{debug}"
+
             # Check cache for identical query (skip if using external history)
             if not use_external_history:
-                cache_key = f"query_{hash(user_query)}_{provider}_{debug}"
                 cached_result = self._get_cached_data(cache_key)
                 if cached_result:
                     return (

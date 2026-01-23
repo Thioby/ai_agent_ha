@@ -317,17 +317,30 @@ async def ws_send_message(
                     conversation_history=conversation_history,
                 )
 
-                assistant_message.content = result.get("answer", "")
-                assistant_message.status = "completed"
-                assistant_message.metadata = {
-                    k: v
-                    for k, v in {
-                        "automation": result.get("automation"),
-                        "dashboard": result.get("dashboard"),
-                        "debug": result.get("debug"),
-                    }.items()
-                    if v is not None
-                }
+                # Check if AI agent returned success or error
+                if result.get("success", False):
+                    assistant_message.content = result.get("answer", "")
+                    assistant_message.status = "completed"
+                    assistant_message.metadata = {
+                        k: v
+                        for k, v in {
+                            "automation": result.get("automation"),
+                            "dashboard": result.get("dashboard"),
+                            "debug": result.get("debug"),
+                        }.items()
+                        if v is not None
+                    }
+                else:
+                    # AI agent returned an error
+                    assistant_message.status = "error"
+                    assistant_message.error_message = result.get(
+                        "error", "Unknown AI error"
+                    )
+                    _LOGGER.error(
+                        "AI agent error for session %s: %s",
+                        session_id,
+                        assistant_message.error_message,
+                    )
             else:
                 raise HomeAssistantError(f"Provider {provider} not configured")
 
