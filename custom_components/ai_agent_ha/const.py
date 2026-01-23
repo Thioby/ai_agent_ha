@@ -20,6 +20,7 @@ AI_PROVIDERS = [
     "llama",
     "openai",
     "gemini",
+    "gemini_oauth",
     "openrouter",
     "anthropic",
     "anthropic_oauth",
@@ -40,3 +41,7 @@ DEFAULT_AI_PROVIDER = "openai"
 # Anthropic OAuth
 CONF_ANTHROPIC_OAUTH = "anthropic_oauth"
 ANTHROPIC_OAUTH_PROVIDER = "anthropic_oauth"
+
+# Gemini OAuth
+CONF_GEMINI_OAUTH = "gemini_oauth"
+GEMINI_OAUTH_PROVIDER = "gemini_oauth"

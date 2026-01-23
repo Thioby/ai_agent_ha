@@ -19,6 +19,7 @@ import aiohttp
 
 from .const import CONF_LOCAL_MODEL, CONF_LOCAL_URL, DOMAIN
 from .oauth import generate_pkce, build_auth_url, exchange_code
+from . import gemini_oauth
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ PROVIDERS = {
     "llama": "Llama",
     "openai": "OpenAI",
     "gemini": "Google Gemini",
+    "gemini_oauth": "Google Gemini (OAuth)",
     "openrouter": "OpenRouter",
     "anthropic": "Anthropic (Claude)",
     "anthropic_oauth": "Anthropic (Claude Pro/Max)",
@@ -185,6 +187,9 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
 
             if user_input["ai_provider"] == "anthropic_oauth":
                 return await self.async_step_anthropic_oauth()
+
+            if user_input["ai_provider"] == "gemini_oauth":
+                return await self.async_step_gemini_oauth()
 
             return await self.async_step_configure()
 
@@ -409,6 +414,64 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
             errors=errors,
         )
 
+    async def async_step_gemini_oauth(self, user_input=None):
+        """Show auth URL and prompt user to authorize, then enter code for Gemini OAuth."""
+        if (
+            not hasattr(self, "_gemini_pkce_verifier")
+            or self._gemini_pkce_verifier is None
+        ):
+            verifier, challenge = gemini_oauth.generate_pkce()
+            self._gemini_pkce_verifier = verifier
+            self._gemini_pkce_challenge = challenge
+            self._gemini_auth_url = gemini_oauth.build_auth_url(
+                self._gemini_pkce_challenge, self._gemini_pkce_verifier
+            )
+
+        errors = {}
+
+        if user_input is not None:
+            code = user_input.get("code", "").strip()
+            if code:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        result = await gemini_oauth.exchange_code(
+                            session, code, self._gemini_pkce_verifier
+                        )
+
+                    if "error" in result:
+                        _LOGGER.error(
+                            "Gemini OAuth exchange failed: %s", result.get("error")
+                        )
+                        errors["base"] = "oauth_failed"
+                    else:
+                        return self.async_create_entry(
+                            title="AI Agent HA (Gemini OAuth)",
+                            data={
+                                "ai_provider": "gemini_oauth",
+                                "gemini_oauth": {
+                                    "access_token": result["access_token"],
+                                    "refresh_token": result["refresh_token"],
+                                    "expires_at": result["expires_at"],
+                                },
+                            },
+                        )
+                except aiohttp.ClientError as e:
+                    _LOGGER.error("Network error during Gemini OAuth exchange: %s", e)
+                    errors["base"] = "oauth_failed"
+            else:
+                errors["code"] = "required"
+
+        return self.async_show_form(
+            step_id="gemini_oauth",
+            description_placeholders={"auth_url": self._gemini_auth_url},
+            data_schema=vol.Schema(
+                {
+                    vol.Required("code"): TextSelector(TextSelectorConfig(type="text")),
+                }
+            ),
+            errors=errors,
+        )
+
 
 class InvalidApiKey(HomeAssistantError):
     """Error to indicate there is an invalid API key."""
@@ -457,8 +520,8 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
         provider = self.options_data["ai_provider"]
         current_provider = self.options_data["current_provider"]
 
-        # anthropic_oauth uses OAuth flow, not simple token - redirect to abort with message
-        if provider == "anthropic_oauth":
+        # OAuth providers use OAuth flow, not simple token - redirect to abort with message
+        if provider in ("anthropic_oauth", "gemini_oauth"):
             return self.async_abort(reason="oauth_reconfigure_not_supported")
 
         token_field = TOKEN_FIELD_NAMES[provider]

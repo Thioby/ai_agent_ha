@@ -31,6 +31,7 @@ const PROVIDERS = {
   openai: "OpenAI",
   llama: "Llama",
   gemini: "Google Gemini",
+  gemini_oauth: "Gemini (OAuth)",
   openrouter: "OpenRouter",
   anthropic: "Anthropic",
   anthropic_oauth: "Claude Pro/Max",

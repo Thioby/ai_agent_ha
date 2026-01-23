@@ -85,6 +85,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "llama",
             "openai",
             "gemini",
+            "gemini_oauth",
             "openrouter",
             "anthropic",
             "anthropic_oauth",
@@ -116,7 +117,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 ]
             },
         )
-        if provider == "anthropic_oauth":
+        if provider in ("anthropic_oauth", "gemini_oauth"):
             hass.data[DOMAIN]["agents"][provider] = AiAgentHaAgent(
                 hass, config_data, entry
             )

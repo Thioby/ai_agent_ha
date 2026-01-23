@@ -918,6 +918,128 @@ class AnthropicOAuthClient(BaseAIClient):
                 return str(data)
 
 
+class GeminiOAuthClient(BaseAIClient):
+    """Gemini client using OAuth authentication (Google account login)."""
+
+    def __init__(self, hass, config_entry, model="gemini-2.0-flash"):
+        import asyncio
+
+        self.hass = hass
+        self.config_entry = config_entry
+        self.model = model
+        self.api_url = "https://generativelanguage.googleapis.com/v1beta/models"
+        self._oauth_data = dict(config_entry.data.get("gemini_oauth", {}))
+        self._refresh_lock = asyncio.Lock()
+
+    async def _get_valid_token(self) -> str:
+        """Get a valid access token, refreshing if necessary."""
+        from .gemini_oauth import refresh_token, GeminiOAuthRefreshError
+        import time
+
+        async with self._refresh_lock:
+            # Check if token is still valid (with 5 minute buffer)
+            if time.time() < self._oauth_data.get("expires_at", 0) - 300:
+                return self._oauth_data["access_token"]
+
+            _LOGGER.debug("Refreshing Gemini OAuth token")
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    new_tokens = await refresh_token(
+                        session, self._oauth_data["refresh_token"]
+                    )
+            except GeminiOAuthRefreshError as e:
+                _LOGGER.error("Gemini OAuth refresh failed: %s", e)
+                raise
+
+            self._oauth_data.update(new_tokens)
+
+            # Persist refreshed tokens to config entry
+            new_data = {**self.config_entry.data, "gemini_oauth": self._oauth_data}
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, data=new_data
+            )
+
+            return new_tokens["access_token"]
+
+    async def get_response(self, messages, **kwargs):
+        """Send request to Gemini API using OAuth token."""
+        access_token = await self._get_valid_token()
+
+        _LOGGER.debug("Making OAuth request to Gemini API with model: %s", self.model)
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        # Convert messages to Gemini format
+        gemini_contents = []
+        system_instruction = None
+
+        for message in messages:
+            role = message.get("role", "user")
+            content = message.get("content", "")
+
+            if role == "system":
+                system_instruction = content
+            elif role == "user" and content:
+                gemini_contents.append({"role": "user", "parts": [{"text": content}]})
+            elif role == "assistant" and content:
+                gemini_contents.append({"role": "model", "parts": [{"text": content}]})
+
+        payload = {
+            "contents": gemini_contents,
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 8192,
+            },
+        }
+
+        # Add system instruction if present
+        if system_instruction:
+            payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+
+        url = f"{self.api_url}/{self.model}:generateContent"
+
+        _LOGGER.debug("Gemini OAuth request URL: %s", url)
+        _LOGGER.debug(
+            "Gemini OAuth request payload: %s", json.dumps(payload, indent=2)[:500]
+        )
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=300),
+            ) as resp:
+                response_text = await resp.text()
+
+                if resp.status != 200:
+                    _LOGGER.error(
+                        "Gemini OAuth API error %d: %s", resp.status, response_text
+                    )
+                    raise Exception(
+                        f"Gemini OAuth API error {resp.status}: {response_text[:200]}"
+                    )
+
+                data = json.loads(response_text)
+
+                # Extract text from Gemini response format
+                candidates = data.get("candidates", [])
+                if candidates:
+                    content = candidates[0].get("content", {})
+                    parts = content.get("parts", [])
+                    if parts:
+                        return parts[0].get("text", str(data))
+
+                _LOGGER.warning(
+                    "Unexpected Gemini response format: %s", response_text[:200]
+                )
+                return str(data)
+
+
 class OpenRouterClient(BaseAIClient):
     def __init__(self, token, model="openai/gpt-4o"):
         self.token = token
