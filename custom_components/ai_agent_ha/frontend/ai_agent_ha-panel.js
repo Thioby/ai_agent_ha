@@ -1488,11 +1488,12 @@ class AiAgentHaPanel extends LitElement {
         let automation = result.assistant_message.metadata?.automation;
         let dashboard = result.assistant_message.metadata?.dashboard;
 
-        // Parse JSON response if present (AI returns structured responses)
-        try {
-          const jsonMatch = content.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
+        // Parse JSON response if content is pure JSON (starts with {)
+        // Don't try to extract JSON from markdown - it may contain code blocks with JSON examples
+        const trimmedContent = content.trim();
+        if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
+          try {
+            const parsed = JSON.parse(trimmedContent);
             if (parsed.request_type === 'automation_suggestion') {
               automation = parsed.automation;
               content = parsed.message || 'I found an automation that might help you.';
@@ -1506,9 +1507,9 @@ class AiAgentHaPanel extends LitElement {
             } else if (parsed.response) {
               content = parsed.response;
             }
+          } catch (e) {
+            // Not valid JSON, use content as-is
           }
-        } catch (e) {
-          // Not JSON, use content as-is
         }
 
         const assistantMsg = {
@@ -1608,31 +1609,26 @@ class AiAgentHaPanel extends LitElement {
 
       let message = { type: 'assistant', text: event.data.answer };
 
-      try {
-        let jsonText = event.data.answer;
-        
-        const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-        if (jsonMatch && jsonMatch[0] !== jsonText.trim()) {
-          jsonText = jsonMatch[0];
+      const trimmedAnswer = (event.data.answer || '').trim();
+      if (trimmedAnswer.startsWith('{') && trimmedAnswer.endsWith('}')) {
+        try {
+          const response = JSON.parse(trimmedAnswer);
+          if (response.request_type === 'automation_suggestion') {
+            message.automation = response.automation;
+            message.text = response.message || 'I found an automation that might help you. Would you like me to create it?';
+          } else if (response.request_type === 'dashboard_suggestion') {
+            message.dashboard = response.dashboard;
+            message.text = response.message || 'I created a dashboard configuration for you. Would you like me to create it?';
+          } else if (response.request_type === 'final_response') {
+            message.text = response.response || response.message || event.data.answer;
+          } else if (response.message) {
+            message.text = response.message;
+          } else if (response.response) {
+            message.text = response.response;
+          }
+        } catch (e) {
+          // Not valid JSON, use as-is
         }
-        
-        const response = JSON.parse(jsonText);
-        
-        if (response.request_type === 'automation_suggestion') {
-          message.automation = response.automation;
-          message.text = response.message || 'I found an automation that might help you. Would you like me to create it?';
-        } else if (response.request_type === 'dashboard_suggestion') {
-          message.dashboard = response.dashboard;
-          message.text = response.message || 'I created a dashboard configuration for you. Would you like me to create it?';
-        } else if (response.request_type === 'final_response') {
-          message.text = response.response || response.message || event.data.answer;
-        } else if (response.message) {
-          message.text = response.message;
-        } else if (response.response) {
-          message.text = response.response;
-        }
-      } catch (e) {
-        // Not a JSON response, use as-is
       }
 
       this._messages = [...this._messages, message];

@@ -3632,37 +3632,24 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             self._set_cached_data(cache_key, result)
                             return result
 
-                        # If response is not valid JSON, try to wrap it as a final response
-                        try:
-                            # Truncate extremely long responses to prevent memory issues
-                            response_to_wrap = response
-                            if len(response) > 50000:
-                                response_to_wrap = (
-                                    response[:5000]
-                                    + "... [Response truncated due to excessive length]"
-                                )
-                                _LOGGER.warning(
-                                    "Truncated extremely long response from %d to 5000 characters",
-                                    len(response),
-                                )
-
-                            wrapped_response = {
-                                "request_type": "final_response",
-                                "response": response_to_wrap,
-                            }
-                            result = {
-                                "success": True,
-                                "answer": json.dumps(wrapped_response),
-                            }
-                            _LOGGER.debug("Wrapped non-JSON response as final_response")
-                        except Exception as wrap_error:
-                            _LOGGER.error(
-                                "Failed to wrap response: %s", str(wrap_error)
+                        # If response is not valid JSON, return it as plain text
+                        # Truncate extremely long responses to prevent memory issues
+                        response_to_return = response
+                        if len(response) > 50000:
+                            response_to_return = (
+                                response[:5000]
+                                + "... [Response truncated due to excessive length]"
                             )
-                            result = {
-                                "success": False,
-                                "error": f"Invalid response format: {str(e)}",
-                            }
+                            _LOGGER.warning(
+                                "Truncated extremely long response from %d to 5000 characters",
+                                len(response),
+                            )
+
+                        result = {
+                            "success": True,
+                            "answer": response_to_return,
+                        }
+                        _LOGGER.debug("Returning plain text response")
 
                         result = _with_debug(result)
                         self._set_cached_data(cache_key, result)
