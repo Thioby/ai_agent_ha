@@ -2744,9 +2744,29 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
             return {"error": f"Error updating dashboard: {str(e)}"}
 
     async def process_query(
-        self, user_query: str, provider: Optional[str] = None, debug: bool = False
+        self,
+        user_query: str,
+        provider: Optional[str] = None,
+        debug: bool = False,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> Dict[str, Any]:
-        """Process a user query with input validation and rate limiting."""
+        """Process a user query with input validation and rate limiting.
+
+        Args:
+            user_query: The user's question or command
+            provider: AI provider to use (optional, uses config default)
+            debug: Whether to include debug information in response
+            conversation_history: Optional list of previous messages for context.
+                If provided, uses this instead of self.conversation_history.
+                Format: [{"role": "user"|"assistant", "content": "..."}]
+
+        Returns:
+            Dict with 'answer', optional 'automation', 'dashboard', 'debug' keys
+        """
+        # Track if we're using external conversation history (from WebSocket API)
+        use_external_history = conversation_history is not None
+        original_history: Optional[List[Dict[str, Any]]] = None
+
         try:
             if not user_query or not isinstance(user_query, str):
                 return {"success": False, "error": "Invalid query format"}
@@ -2916,24 +2936,47 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
 
             _LOGGER.debug("Processing new query: %s", user_query)
 
-            # Check cache for identical query
-            cache_key = f"query_{hash(user_query)}_{provider}_{debug}"
-            cached_result = self._get_cached_data(cache_key)
-            if cached_result:
-                return (
-                    dict(cached_result)
-                    if isinstance(cached_result, dict)
-                    else {"error": "Invalid cached result"}
+            # Check cache for identical query (skip if using external history)
+            if not use_external_history:
+                cache_key = f"query_{hash(user_query)}_{provider}_{debug}"
+                cached_result = self._get_cached_data(cache_key)
+                if cached_result:
+                    return (
+                        dict(cached_result)
+                        if isinstance(cached_result, dict)
+                        else {"error": "Invalid cached result"}
+                    )
+
+            # Handle conversation history
+            if use_external_history:
+                # Use provided conversation history (from WebSocket API)
+                # Build messages list with system prompt + history
+                working_history: List[Dict[str, Any]] = [self.system_prompt]
+                for msg in conversation_history:  # type: ignore[union-attr]
+                    working_history.append(
+                        {
+                            "role": msg.get("role", "user"),
+                            "content": msg.get("content", ""),
+                        }
+                    )
+                # Temporarily replace self.conversation_history for this request
+                original_history = self.conversation_history
+                self.conversation_history = working_history
+                _LOGGER.debug(
+                    "Using external conversation history with %d messages",
+                    len(conversation_history),  # type: ignore[arg-type]
                 )
+            else:
+                # Legacy behavior: use self.conversation_history
+                if not self.conversation_history:
+                    _LOGGER.debug("Adding system message to new conversation")
+                    self.conversation_history.append(self.system_prompt)
 
-            # Add system message to conversation if it's the first message
-            if not self.conversation_history:
-                _LOGGER.debug("Adding system message to new conversation")
-                self.conversation_history.append(self.system_prompt)
-
-            # Add user query to conversation
-            self.conversation_history.append({"role": "user", "content": user_query})
-            _LOGGER.debug("Added user query to conversation history")
+                # Add user query to conversation
+                self.conversation_history.append(
+                    {"role": "user", "content": user_query}
+                )
+                _LOGGER.debug("Added user query to conversation history")
 
             max_iterations = 5  # Prevent infinite loops
             iteration = 0
@@ -3648,6 +3691,10 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
             return _with_debug(
                 {"success": False, "error": f"Error in process_query: {str(e)}"}
             )
+        finally:
+            # Restore original conversation history if we were using external history
+            if use_external_history and original_history is not None:
+                self.conversation_history = original_history
 
     def _build_debug_trace(
         self,

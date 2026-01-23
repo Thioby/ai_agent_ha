@@ -4,8 +4,6 @@ import {
   css,
 } from "https://unpkg.com/lit-element@2.4.0/lit-element.js?module";
 
-console.log("AI Agent HA Panel loading..."); // Debug log
-
 const PROVIDERS = {
   openai: "OpenAI",
   llama: "Llama",
@@ -28,16 +26,16 @@ class AiAgentHaPanel extends LitElement {
       _isLoading: { type: Boolean, reflect: false, attribute: false },
       _error: { type: String, reflect: false, attribute: false },
       _pendingAutomation: { type: Object, reflect: false, attribute: false },
-      _promptHistory: { type: Array, reflect: false, attribute: false },
-      _showPredefinedPrompts: { type: Boolean, reflect: false, attribute: false },
-      _showPromptHistory: { type: Boolean, reflect: false, attribute: false },
-      _selectedPrompts: { type: Array, reflect: false, attribute: false },
       _selectedProvider: { type: String, reflect: false, attribute: false },
       _availableProviders: { type: Array, reflect: false, attribute: false },
       _showProviderDropdown: { type: Boolean, reflect: false, attribute: false },
       _showThinking: { type: Boolean, reflect: false, attribute: false },
       _thinkingExpanded: { type: Boolean, reflect: false, attribute: false },
-      _debugInfo: { type: Object, reflect: false, attribute: false }
+      _debugInfo: { type: Object, reflect: false, attribute: false },
+      _sessions: { type: Array, reflect: false, attribute: false },
+      _activeSessionId: { type: String, reflect: false, attribute: false },
+      _sidebarOpen: { type: Boolean, reflect: false, attribute: false },
+      _sessionsLoading: { type: Boolean, reflect: false, attribute: false }
     };
   }
 
@@ -131,108 +129,6 @@ class AiAgentHaPanel extends LitElement {
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         flex-grow: 1;
         width: 100%;
-      }
-      .prompts-section {
-        margin-bottom: 12px;
-        padding: 12px 16px;
-        background: var(--secondary-background-color);
-        border-radius: 16px;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-        border: 1px solid var(--divider-color);
-      }
-      .prompts-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 8px;
-        font-size: 14px;
-        font-weight: 500;
-        color: var(--secondary-text-color);
-      }
-      .prompts-toggle {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        cursor: pointer;
-        color: var(--primary-color);
-        font-size: 12px;
-        font-weight: 500;
-        padding: 2px 6px;
-        border-radius: 4px;
-        transition: background-color 0.2s ease;
-      }
-      .prompts-toggle:hover {
-        background: var(--primary-color);
-        color: var(--text-primary-color);
-      }
-      .prompts-toggle ha-icon {
-        --mdc-icon-size: 14px;
-      }
-      .prompt-bubbles {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-bottom: 8px;
-      }
-      .prompt-bubble {
-        background: var(--primary-background-color);
-        border: 1px solid var(--divider-color);
-        border-radius: 20px;
-        padding: 6px 12px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        font-size: 12px;
-        line-height: 1.3;
-        color: var(--primary-text-color);
-        white-space: nowrap;
-        max-width: 200px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .prompt-bubble:hover {
-        border-color: var(--primary-color);
-        background: var(--primary-color);
-        color: var(--text-primary-color);
-        transform: translateY(-1px);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      }
-      .prompt-bubble:active {
-        transform: translateY(0);
-      }
-      .history-bubble {
-        background: var(--primary-background-color);
-        border: 1px solid var(--accent-color);
-        border-radius: 20px;
-        padding: 6px 12px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        font-size: 12px;
-        line-height: 1.3;
-        color: var(--accent-color);
-        white-space: nowrap;
-        max-width: 180px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .history-bubble:hover {
-        background: var(--accent-color);
-        color: var(--text-primary-color);
-        transform: translateY(-1px);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      }
-      .history-delete {
-        opacity: 0;
-        transition: opacity 0.2s ease;
-        color: var(--error-color);
-        cursor: pointer;
-        --mdc-icon-size: 14px;
-      }
-      .history-bubble:hover .history-delete {
-        opacity: 1;
-        color: var(--text-primary-color);
       }
       .message {
         margin-bottom: 16px;
@@ -487,12 +383,40 @@ class AiAgentHaPanel extends LitElement {
       }
       .error {
         color: var(--error-color);
-        padding: 16px;
-        margin: 8px 0;
-        border-radius: 12px;
-        background: var(--error-background-color);
+        padding: 12px 16px;
+        margin: 8px 16px;
+        border-radius: 8px;
+        background: rgba(var(--rgb-error-color, 219, 68, 55), 0.1);
         border: 1px solid var(--error-color);
         animation: fadeIn 0.3s ease-out;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 14px;
+      }
+      .error ha-icon {
+        --mdc-icon-size: 20px;
+        flex-shrink: 0;
+      }
+      .error-message {
+        flex: 1;
+      }
+      .error-dismiss {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .error-dismiss:hover {
+        background: rgba(var(--rgb-error-color, 219, 68, 55), 0.2);
+      }
+      .error-dismiss ha-icon {
+        --mdc-icon-size: 18px;
+        color: var(--error-color);
       }
       .automation-suggestion {
         background: var(--secondary-background-color);
@@ -609,6 +533,288 @@ class AiAgentHaPanel extends LitElement {
         font-size: 14px;
         padding: 8px;
       }
+      .main-container {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+        height: calc(100vh - 56px);
+      }
+      .sidebar {
+        width: 280px;
+        background: var(--secondary-background-color);
+        border-right: 1px solid var(--divider-color);
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+        transition: transform 0.3s ease, width 0.3s ease;
+      }
+      .sidebar.hidden {
+        transform: translateX(-100%);
+        width: 0;
+        border: none;
+      }
+      .sidebar-header {
+        padding: 16px;
+        border-bottom: 1px solid var(--divider-color);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .sidebar-title {
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .new-chat-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 14px 16px;
+        min-height: 48px;
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.2s, transform 0.1s;
+        font-family: inherit;
+      }
+      .new-chat-btn:hover {
+        filter: brightness(1.1);
+      }
+      .new-chat-btn:active {
+        transform: scale(0.98);
+      }
+      .session-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px;
+      }
+      .session-item {
+        display: flex;
+        flex-direction: column;
+        padding: 12px;
+        margin-bottom: 4px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background-color 0.2s, transform 0.2s;
+        position: relative;
+        animation: slideIn 0.2s ease-out;
+      }
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateX(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+      .session-item:active {
+        transform: scale(0.98);
+      }
+      .session-item:hover {
+        background: var(--card-background-color);
+      }
+      .session-item.active {
+        background: rgba(var(--rgb-primary-color), 0.15);
+        border-left: 3px solid var(--primary-color);
+      }
+      .session-title {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        margin-bottom: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding-right: 24px;
+      }
+      .session-preview {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .session-time {
+        font-size: 11px;
+        color: var(--disabled-text-color);
+        margin-top: 4px;
+      }
+      .session-delete {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 32px;
+        height: 32px;
+        min-width: 44px;
+        min-height: 44px;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.2s;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+      }
+      .session-item:hover .session-delete {
+        opacity: 1;
+      }
+      .session-delete:hover {
+        background: rgba(var(--rgb-error-color), 0.2);
+      }
+      .session-delete ha-icon {
+        --mdc-icon-size: 16px;
+        color: var(--secondary-text-color);
+      }
+      .session-delete:hover ha-icon {
+        color: var(--error-color);
+      }
+      .menu-toggle {
+        display: none;
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        border-radius: 50%;
+        align-items: center;
+        justify-content: center;
+        margin-right: 8px;
+        padding: 0;
+      }
+      .menu-toggle:hover {
+        background: var(--card-background-color);
+      }
+      .menu-toggle ha-icon {
+        --mdc-icon-size: 24px;
+        color: var(--primary-text-color);
+      }
+      .sidebar-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 99;
+      }
+      .sidebar-overlay.show {
+        display: block;
+      }
+      .empty-sessions {
+        text-align: center;
+        padding: 32px 16px;
+        color: var(--secondary-text-color);
+      }
+      .empty-sessions ha-icon {
+        --mdc-icon-size: 48px;
+        color: var(--disabled-text-color);
+        margin-bottom: 12px;
+      }
+      .empty-chat {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 32px;
+        color: var(--secondary-text-color);
+      }
+      .empty-chat ha-icon {
+        --mdc-icon-size: 64px;
+        color: var(--disabled-text-color);
+        margin-bottom: 16px;
+      }
+      .empty-chat h3 {
+        font-size: 18px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        margin-bottom: 8px;
+      }
+      .empty-chat p {
+        font-size: 14px;
+        margin-bottom: 24px;
+        max-width: 300px;
+      }
+      .empty-chat button {
+        padding: 12px 24px;
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: filter 0.2s, transform 0.1s;
+        font-family: inherit;
+      }
+      .empty-chat button:hover {
+        filter: brightness(1.1);
+      }
+      .empty-chat button:active {
+        transform: scale(0.98);
+      }
+      .session-skeleton {
+        padding: 12px;
+        margin-bottom: 4px;
+      }
+      .skeleton-line {
+        height: 14px;
+        background: linear-gradient(90deg, var(--divider-color) 25%, var(--card-background-color) 50%, var(--divider-color) 75%);
+        background-size: 200% 100%;
+        animation: skeleton-shimmer 1.5s infinite;
+        border-radius: 4px;
+        margin-bottom: 8px;
+      }
+      .skeleton-line.short {
+        width: 60%;
+        height: 12px;
+      }
+      .skeleton-line.tiny {
+        width: 40%;
+        height: 10px;
+      }
+      @keyframes skeleton-shimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+      @media (max-width: 768px) {
+        .sidebar {
+          position: fixed;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          z-index: 100;
+          transform: translateX(-100%);
+          width: 280px;
+        }
+        .sidebar.open {
+          transform: translateX(0);
+          box-shadow: var(--shadow-elevation-4dp, 0 4px 5px 0 rgba(0,0,0,.14));
+        }
+        .sidebar.hidden {
+          transform: translateX(-100%);
+        }
+        .menu-toggle {
+          display: flex;
+        }
+      }
     `;
   }
 
@@ -618,24 +824,6 @@ class AiAgentHaPanel extends LitElement {
     this._isLoading = false;
     this._error = null;
     this._pendingAutomation = null;
-    this._promptHistory = [];
-    this._promptHistoryLoaded = false;
-    this._showPredefinedPrompts = true;
-    this._showPromptHistory = true;
-    this._predefinedPrompts = [
-      "Build a new automation to turn off all lights at 10:00 PM every day",
-      "What's the current temperature inside and outside?",
-      "Turn on all the lights in the living room",
-      "Show me today's weather forecast",
-      "What devices are currently on?",
-      "Show me the energy usage for today",
-      "Are all the doors and windows locked?",
-      "Turn on movie mode in the living room",
-      "What's the status of my security system?",
-      "Show me who's currently home",
-      "Turn off all devices when I leave home"
-    ];
-    this._selectedPrompts = this._getRandomPrompts();
     this._selectedProvider = null;
     this._availableProviders = [];
     this._showProviderDropdown = false;
@@ -645,48 +833,198 @@ class AiAgentHaPanel extends LitElement {
     this._showThinking = false;
     this._thinkingExpanded = false;
     this._debugInfo = null;
-    console.debug("AI Agent HA Panel constructor called");
+    this._sessions = [];
+    this._activeSessionId = null;
+    this._sidebarOpen = window.innerWidth > 768;
+    this._sessionsLoading = true;
+    this._unsubscribeEvents = null;
+    
+    // Bind event handlers for proper cleanup
+    this._handleDocumentClick = this._handleDocumentClick.bind(this);
+    this._handleWindowResize = this._handleWindowResize.bind(this);
+  }
+  
+  _handleDocumentClick(e) {
+    if (!this.shadowRoot.querySelector('.provider-selector')?.contains(e.target)) {
+      this._showProviderDropdown = false;
+    }
+  }
+  
+  _handleWindowResize() {
+    if (window.innerWidth > 768 && !this._sidebarOpen) {
+      this._sidebarOpen = true;
+    }
   }
 
-  _getRandomPrompts() {
-    // Shuffle array and take first 3 items
-    const shuffled = [...this._predefinedPrompts].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, 3);
+  async _loadSessions() {
+    if (!this.hass) return;
+    this._sessionsLoading = true;
+    try {
+      const result = await this.hass.callWS({
+        type: "ai_agent_ha/sessions/list"
+      });
+      this._sessions = result.sessions || [];
+      if (this._sessions.length > 0 && !this._activeSessionId) {
+        await this._selectSession(this._sessions[0].session_id);
+      }
+    } catch (error) {
+      console.error("Failed to load sessions:", error);
+      this._error = "Could not load conversations";
+    } finally {
+      this._sessionsLoading = false;
+    }
+  }
+
+  async _selectSession(sessionId) {
+    this._activeSessionId = sessionId;
+    this._isLoading = true;
+    this._error = null;
+    try {
+      const result = await this.hass.callWS({
+        type: "ai_agent_ha/sessions/get",
+        session_id: sessionId
+      });
+      this._messages = (result.messages || []).map(m => ({
+        type: m.role === "user" ? "user" : "assistant",
+        text: m.content,
+        automation: m.metadata?.automation,
+        dashboard: m.metadata?.dashboard,
+        timestamp: m.timestamp,
+        status: m.status,
+        error_message: m.error_message
+      }));
+      if (window.innerWidth <= 768) {
+        this._sidebarOpen = false;
+      }
+    } catch (error) {
+      console.error("Failed to load session:", error);
+      this._error = "Could not load conversation";
+    } finally {
+      this._isLoading = false;
+    }
+  }
+
+  async _createNewSession() {
+    if (!this._selectedProvider) {
+      this._error = "Please select a provider first";
+      return;
+    }
+    try {
+      const result = await this.hass.callWS({
+        type: "ai_agent_ha/sessions/create",
+        provider: this._selectedProvider
+      });
+      this._sessions = [result, ...this._sessions];
+      this._activeSessionId = result.session_id;
+      this._messages = [];
+      if (window.innerWidth <= 768) {
+        this._sidebarOpen = false;
+      }
+    } catch (error) {
+      console.error("Failed to create session:", error);
+      this._error = "Could not create new conversation";
+    }
+  }
+
+  async _deleteSession(e, sessionId) {
+    e.stopPropagation();
+    if (!confirm("Delete this conversation?")) return;
+    
+    try {
+      await this.hass.callWS({
+        type: "ai_agent_ha/sessions/delete",
+        session_id: sessionId
+      });
+      this._sessions = this._sessions.filter(s => s.session_id !== sessionId);
+      
+      if (this._activeSessionId === sessionId) {
+        if (this._sessions.length > 0) {
+          await this._selectSession(this._sessions[0].session_id);
+        } else {
+          this._activeSessionId = null;
+          this._messages = [];
+        }
+      }
+    } catch (error) {
+      console.error("Failed to delete session:", error);
+      this._error = "Could not delete conversation";
+    }
+  }
+
+  _toggleSidebar() {
+    this._sidebarOpen = !this._sidebarOpen;
+  }
+
+  _formatSessionTime(timestamp) {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+      return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+    } else if (diffDays === 1) {
+      return "Yesterday";
+    } else if (diffDays < 7) {
+      return `${diffDays} days ago`;
+    } else {
+      return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    }
+  }
+
+  _updateSessionInList(sessionId, preview, title) {
+    this._sessions = this._sessions.map(s => {
+      if (s.session_id === sessionId) {
+        return {
+          ...s,
+          preview: preview ? preview.substring(0, 100) : s.preview,
+          title: title || s.title,
+          message_count: (s.message_count || 0) + 2,
+          updated_at: new Date().toISOString()
+        };
+      }
+      return s;
+    });
+    this._sessions = [...this._sessions].sort(
+      (a, b) => new Date(b.updated_at) - new Date(a.updated_at)
+    );
   }
 
   async connectedCallback() {
     super.connectedCallback();
-    console.debug("AI Agent HA Panel connected");
     if (this.hass && !this._eventSubscriptionSetup) {
       this._eventSubscriptionSetup = true;
-      this.hass.connection.subscribeEvents(
+      this._unsubscribeEvents = await this.hass.connection.subscribeEvents(
         (event) => this._handleLlamaResponse(event),
         'ai_agent_ha_response'
       );
-      console.debug("Event subscription set up in connectedCallback()");
-      // Load prompt history from Home Assistant storage
-      await this._loadPromptHistory();
+      await this._loadSessions();
     }
 
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
-      if (!this.shadowRoot.querySelector('.provider-selector')?.contains(e.target)) {
-        this._showProviderDropdown = false;
-      }
-    });
+    document.addEventListener('click', this._handleDocumentClick);
+    window.addEventListener('resize', this._handleWindowResize);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this._unsubscribeEvents) {
+      this._unsubscribeEvents();
+      this._unsubscribeEvents = null;
+      this._eventSubscriptionSetup = false;
+    }
+    document.removeEventListener('click', this._handleDocumentClick);
+    window.removeEventListener('resize', this._handleWindowResize);
   }
 
   async updated(changedProps) {
-    console.debug("Updated called with:", changedProps);
-
     // Set up event subscription when hass becomes available
     if (changedProps.has('hass') && this.hass && !this._eventSubscriptionSetup) {
       this._eventSubscriptionSetup = true;
-      this.hass.connection.subscribeEvents(
+      this._unsubscribeEvents = await this.hass.connection.subscribeEvents(
         (event) => this._handleLlamaResponse(event),
         'ai_agent_ha_response'
       );
-      console.debug("Event subscription set up in updated()");
     }
 
     // Load providers when hass becomes available
@@ -716,8 +1054,6 @@ class AiAgentHaPanel extends LitElement {
 
           this._availableProviders = providers;
 
-          console.debug("Available AI providers (mapped from data/title):", this._availableProviders);
-
           if (
             (!this._selectedProvider || !providers.find(p => p.value === this._selectedProvider)) &&
             providers.length > 0
@@ -725,7 +1061,6 @@ class AiAgentHaPanel extends LitElement {
             this._selectedProvider = providers[0].value;
           }
         } else {
-          console.debug("No 'ai_agent_ha' config entries found via WebSocket.");
           this._availableProviders = [];
         }
       } catch (error) {
@@ -736,15 +1071,9 @@ class AiAgentHaPanel extends LitElement {
       this.requestUpdate();
     }
 
-    // Load prompt history when hass becomes available and we haven't loaded it yet
-    if (changedProps.has('hass') && this.hass && !this._promptHistoryLoaded) {
-      this._promptHistoryLoaded = true;
-      await this._loadPromptHistory();
-    }
-
-    // Load prompt history when provider changes
-    if (changedProps.has('_selectedProvider') && this._selectedProvider && this.hass) {
-      await this._loadPromptHistory();
+    // Load sessions when hass becomes available
+    if (changedProps.has('hass') && this.hass && this._sessions.length === 0) {
+      await this._loadSessions();
     }
 
     if (changedProps.has('_messages') || changedProps.has('_isLoading')) {
@@ -752,208 +1081,68 @@ class AiAgentHaPanel extends LitElement {
     }
   }
 
-  _renderPromptsSection() {
+  _renderSidebar() {
+    const sidebarClass = window.innerWidth <= 768 
+      ? (this._sidebarOpen ? "sidebar open" : "sidebar hidden")
+      : (this._sidebarOpen ? "sidebar" : "sidebar hidden");
+    
     return html`
-      <div class="prompts-section">
-        <div class="prompts-header">
-          <span>Quick Actions</span>
-          <div style="display: flex; gap: 12px;">
-            <div class="prompts-toggle" @click=${() => this._togglePredefinedPrompts()}>
-              <ha-icon icon="${this._showPredefinedPrompts ? 'mdi:chevron-up' : 'mdi:chevron-down'}"></ha-icon>
-              <span>Suggestions</span>
-            </div>
-            ${this._promptHistory.length > 0 ? html`
-              <div class="prompts-toggle" @click=${() => this._togglePromptHistory()}>
-                <ha-icon icon="${this._showPromptHistory ? 'mdi:chevron-up' : 'mdi:chevron-down'}"></ha-icon>
-                <span>Recent</span>
-              </div>
-            ` : ''}
+      <div 
+        class="sidebar-overlay ${this._sidebarOpen && window.innerWidth <= 768 ? 'show' : ''}"
+        @click=${this._toggleSidebar}
+      ></div>
+      <aside class="${sidebarClass}">
+        <div class="sidebar-header">
+          <div class="sidebar-title">
+            <ha-icon icon="mdi:chat"></ha-icon>
+            Conversations
           </div>
+          <button class="new-chat-btn" @click=${this._createNewSession}>
+            <ha-icon icon="mdi:plus"></ha-icon>
+            New Chat
+          </button>
         </div>
-
-        ${this._showPredefinedPrompts ? html`
-          <div class="prompt-bubbles">
-            ${this._selectedPrompts.map(prompt => html`
-              <div class="prompt-bubble" @click=${() => this._usePrompt(prompt)}>
-                ${prompt}
+        <div class="session-list">
+          ${this._sessionsLoading ? html`
+            ${[1, 2, 3].map(() => html`
+              <div class="session-skeleton">
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line tiny"></div>
               </div>
             `)}
-          </div>
-        ` : ''}
-
-        ${this._showPromptHistory && this._promptHistory.length > 0 ? html`
-          <div class="prompt-bubbles">
-            ${this._promptHistory.slice(-3).reverse().map((prompt, index) => html`
-              <div class="history-bubble" @click=${(e) => this._useHistoryPrompt(e, prompt)}>
-                <span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis;">${prompt}</span>
-                <ha-icon
-                  class="history-delete"
-                  icon="mdi:close"
-                  @click=${(e) => this._deleteHistoryItem(e, prompt)}
-                ></ha-icon>
-              </div>
-            `)}
-          </div>
-        ` : ''}
-      </div>
+          ` : this._sessions.length === 0 ? html`
+            <div class="empty-sessions">
+              <ha-icon icon="mdi:chat-outline"></ha-icon>
+              <p>No conversations yet</p>
+            </div>
+          ` : this._sessions.map(session => html`
+            <div 
+              class="session-item ${session.session_id === this._activeSessionId ? 'active' : ''}"
+              @click=${() => this._selectSession(session.session_id)}
+            >
+              <span class="session-title">${session.title || "New Conversation"}</span>
+              <span class="session-preview">${session.preview || "Start typing..."}</span>
+              <span class="session-time">${this._formatSessionTime(session.updated_at)}</span>
+              <button 
+                class="session-delete"
+                @click=${(e) => this._deleteSession(e, session.session_id)}
+              >
+                <ha-icon icon="mdi:delete"></ha-icon>
+              </button>
+            </div>
+          `)}
+        </div>
+      </aside>
     `;
   }
 
-  _togglePredefinedPrompts() {
-    this._showPredefinedPrompts = !this._showPredefinedPrompts;
-    // Refresh random selection when toggling on
-    if (this._showPredefinedPrompts) {
-      this._selectedPrompts = this._getRandomPrompts();
-    }
-  }
-
-  _togglePromptHistory() {
-    this._showPromptHistory = !this._showPromptHistory;
-  }
-
-  _usePrompt(prompt) {
-    if (this._isLoading) return;
-    const promptEl = this.shadowRoot.querySelector('#prompt');
-    if (promptEl) {
-      promptEl.value = prompt;
-      promptEl.focus();
-    }
-  }
-
-  _useHistoryPrompt(event, prompt) {
-    event.stopPropagation();
-    if (this._isLoading) return;
-    const promptEl = this.shadowRoot.querySelector('#prompt');
-    if (promptEl) {
-      promptEl.value = prompt;
-      promptEl.focus();
-    }
-  }
-
-  async _deleteHistoryItem(event, prompt) {
-    event.stopPropagation();
-    this._promptHistory = this._promptHistory.filter(p => p !== prompt);
-    await this._savePromptHistory();
-    this.requestUpdate();
-  }
-
-  async _addToHistory(prompt) {
-    if (!prompt || prompt.trim().length === 0) return;
-
-    // Remove duplicates and add to front
-    this._promptHistory = this._promptHistory.filter(p => p !== prompt);
-    this._promptHistory.push(prompt);
-
-    // Keep only last 20 prompts
-    if (this._promptHistory.length > 20) {
-      this._promptHistory = this._promptHistory.slice(-20);
-    }
-
-    await this._savePromptHistory();
-    this.requestUpdate();
-  }
-
-  async _loadPromptHistory() {
-    if (!this.hass) {
-      console.debug('Hass not available, skipping prompt history load');
-      return;
-    }
-
-    console.debug('Loading prompt history...');
-    try {
-      const result = await this.hass.callService('ai_agent_ha', 'load_prompt_history', {
-        provider: this._selectedProvider
-      });
-      console.debug('Prompt history service result:', result);
-
-      if (result && result.response && result.response.history) {
-        this._promptHistory = result.response.history;
-        console.debug('Loaded prompt history from service:', this._promptHistory);
-        this.requestUpdate();
-      } else if (result && result.history) {
-        this._promptHistory = result.history;
-        console.debug('Loaded prompt history from service (direct):', this._promptHistory);
-        this.requestUpdate();
-      } else {
-        console.debug('No prompt history returned from service, checking localStorage');
-        // Fallback to localStorage if service returns no data
-        this._loadFromLocalStorage();
-      }
-    } catch (error) {
-      console.error('Error loading prompt history from service:', error);
-      // Fallback to localStorage if service fails
-      this._loadFromLocalStorage();
-    }
-  }
-
-  _loadFromLocalStorage() {
-    try {
-      const savedList = localStorage.getItem('ai_agent_ha_prompt_history');
-      if (savedList) {
-        const parsedList = JSON.parse(savedList);
-        const saved = parsedList.history && parsedList.provider === this._selectedProvider ? parsedList.history : null;
-        if (saved) {
-          this._promptHistory = JSON.parse(saved);
-          console.debug('Loaded prompt history from localStorage:', this._promptHistory);
-          this.requestUpdate();
-        } else {
-          console.debug('No prompt history in localStorage');
-          this._promptHistory = [];
-        }
-      }
-    } catch (e) {
-      console.error('Error loading from localStorage:', e);
-      this._promptHistory = [];
-    }
-  }
-
-  async _savePromptHistory() {
-    if (!this.hass) {
-      console.debug('Hass not available, saving to localStorage only');
-      this._saveToLocalStorage();
-      return;
-    }
-
-    console.debug('Saving prompt history:', this._promptHistory);
-    try {
-      const result = await this.hass.callService('ai_agent_ha', 'save_prompt_history', {
-        history: this._promptHistory,
-        provider: this._selectedProvider
-      });
-      console.debug('Save prompt history result:', result);
-
-      // Also save to localStorage as backup
-      this._saveToLocalStorage();
-    } catch (error) {
-      console.error('Error saving prompt history to service:', error);
-      // Fallback to localStorage if service fails
-      this._saveToLocalStorage();
-    }
-  }
-
-  _saveToLocalStorage() {
-    try {
-      const data = {
-        provider: this._selectedProvider,
-        history: JSON.stringify(this._promptHistory)
-      }
-      localStorage.setItem('ai_agent_ha_prompt_history', JSON.stringify(data));
-      console.debug('Saved prompt history to localStorage');
-    } catch (e) {
-      console.error('Error saving to localStorage:', e);
-    }
-  }
-
   render() {
-    console.debug("Rendering with state:", {
-      messages: this._messages,
-      isLoading: this._isLoading,
-      error: this._error
-    });
-    console.debug("Messages array:", this._messages);
-
     return html`
       <div class="header">
+        <button class="menu-toggle" @click=${this._toggleSidebar}>
+          <ha-icon icon="mdi:menu"></ha-icon>
+        </button>
         <ha-icon icon="mdi:robot"></ha-icon>
         AI Agent HA
         <button
@@ -965,9 +1154,18 @@ class AiAgentHaPanel extends LitElement {
           <span>Clear Chat</span>
         </button>
       </div>
-      <div class="content">
-        <div class="chat-container">
+      <div class="main-container">
+        ${this._renderSidebar()}
+        <div class="content">
+          <div class="chat-container">
           <div class="messages" id="messages">
+            ${this._messages.length === 0 && !this._isLoading ? html`
+              <div class="empty-chat">
+                <ha-icon icon="mdi:chat-outline"></ha-icon>
+                <h3>Start a conversation</h3>
+                <p>Ask your AI assistant about your Home Assistant setup, automations, or devices.</p>
+              </div>
+            ` : ''}
             ${this._messages.map(msg => html`
               <div class="message ${msg.type}-message">
                 ${msg.text}
@@ -1022,11 +1220,16 @@ class AiAgentHaPanel extends LitElement {
               </div>
             ` : ''}
             ${this._error ? html`
-              <div class="error">${this._error}</div>
+              <div class="error">
+                <ha-icon icon="mdi:alert-circle"></ha-icon>
+                <span class="error-message">${this._error}</span>
+                <button class="error-dismiss" @click=${() => this._error = null}>
+                  <ha-icon icon="mdi:close"></ha-icon>
+                </button>
+              </div>
             ` : ''}
             ${this._showThinking ? this._renderThinkingPanel() : ''}
           </div>
-          ${this._renderPromptsSection()}
           <div class="input-container">
             <div class="input-main">
               <div class="input-wrapper">
@@ -1077,6 +1280,7 @@ class AiAgentHaPanel extends LitElement {
             </div>
           </div>
         </div>
+        </div>
       </div>
     `;
   }
@@ -1103,14 +1307,11 @@ class AiAgentHaPanel extends LitElement {
 
   _toggleProviderDropdown() {
     this._showProviderDropdown = !this._showProviderDropdown;
-    console.log("Toggling provider dropdown:", this._showProviderDropdown);
-    this.requestUpdate(); // Añade esta línea para forzar la actualización
+    this.requestUpdate();
   }
 
   async _selectProvider(provider) {
     this._selectedProvider = provider;
-    console.debug("Provider changed to:", provider);
-    await this._loadPromptHistory();
     this.requestUpdate();
   }
 
@@ -1124,27 +1325,91 @@ class AiAgentHaPanel extends LitElement {
     const prompt = promptEl.value.trim();
     if (!prompt || this._isLoading) return;
 
-    console.debug("Sending message:", prompt);
-    console.debug("Sending message with provider:", this._selectedProvider);
-
-    // Add to history
-    await this._addToHistory(prompt);
-
-    // Add user message
-    this._messages = [...this._messages, { type: 'user', text: prompt }];
     promptEl.value = '';
     promptEl.style.height = 'auto';
     this._isLoading = true;
     this._error = null;
     this._debugInfo = null;
-    this._thinkingExpanded = false; // keep collapsed until a trace arrives
+    this._thinkingExpanded = false;
 
-    // Clear any existing timeout
     if (this._serviceCallTimeout) {
       clearTimeout(this._serviceCallTimeout);
     }
 
-    // Set timeout to clear loading state after 60 seconds
+    if (!this._activeSessionId) {
+      try {
+        await this._createNewSession();
+      } catch (error) {
+        console.error("Failed to create session:", error);
+        this._clearLoadingState();
+        this._error = "Could not create conversation";
+        return;
+      }
+    }
+
+    if (this._activeSessionId) {
+      await this._sendMessageViaWebSocket(prompt);
+    } else {
+      await this._sendMessageViaService(prompt);
+    }
+  }
+
+  async _sendMessageViaWebSocket(prompt) {
+    this._messages = [...this._messages, { type: 'user', text: prompt }];
+    
+    try {
+      const result = await this.hass.callWS({
+        type: "ai_agent_ha/chat/send",
+        session_id: this._activeSessionId,
+        message: prompt,
+        provider: this._selectedProvider,
+        debug: this._showThinking
+      });
+
+      this._clearLoadingState();
+
+      if (result.assistant_message) {
+        const assistantMsg = {
+          type: 'assistant',
+          text: result.assistant_message.content || '',
+          automation: result.assistant_message.metadata?.automation,
+          dashboard: result.assistant_message.metadata?.dashboard,
+          status: result.assistant_message.status,
+          error_message: result.assistant_message.error_message
+        };
+
+        if (result.assistant_message.status === 'error') {
+          this._error = result.assistant_message.error_message;
+          assistantMsg.text = `Error: ${result.assistant_message.error_message}`;
+        }
+
+        this._messages = [...this._messages, assistantMsg];
+        this._debugInfo = this._showThinking ? result.assistant_message.metadata?.debug : null;
+        if (this._showThinking && this._debugInfo) {
+          this._thinkingExpanded = true;
+        }
+      }
+
+      const sessionTitle = this._sessions.find(s => s.session_id === this._activeSessionId)?.title;
+      const isNewConversation = sessionTitle === "New Conversation";
+      this._updateSessionInList(
+        this._activeSessionId, 
+        prompt,
+        isNewConversation ? prompt.substring(0, 40) + (prompt.length > 40 ? "..." : "") : null
+      );
+
+      this._scrollToBottom();
+
+    } catch (error) {
+      console.error("WebSocket error, falling back to service:", error);
+      this._messages = this._messages.slice(0, -1);
+      await this._sendMessageViaService(prompt);
+    }
+  }
+
+  async _sendMessageViaService(prompt) {
+    this._messages = [...this._messages, { type: 'user', text: prompt }];
+
     this._serviceCallTimeout = setTimeout(() => {
       if (this._isLoading) {
         console.warn("Service call timeout - clearing loading state");
@@ -1156,10 +1421,9 @@ class AiAgentHaPanel extends LitElement {
         }];
         this.requestUpdate();
       }
-    }, 60000); // 60 second timeout
+    }, 60000);
 
     try {
-      console.debug("Calling ai_agent_ha service");
       await this.hass.callService('ai_agent_ha', 'query', {
         prompt: prompt,
         provider: this._selectedProvider,
@@ -1185,8 +1449,6 @@ class AiAgentHaPanel extends LitElement {
   }
 
   _handleLlamaResponse(event) {
-    console.debug("Received llama response:", event);
-    
     try {
       this._clearLoadingState();
       this._debugInfo = this._showThinking ? (event.data.debug || null) : null;
@@ -1194,9 +1456,7 @@ class AiAgentHaPanel extends LitElement {
         this._thinkingExpanded = true;
       }
     if (event.data.success) {
-      // Check if the answer is empty
       if (!event.data.answer || event.data.answer.trim() === '') {
-        console.warn("AI agent returned empty response");
         this._messages = [
           ...this._messages,
           { type: 'assistant', text: 'I received your message but I\'m not sure how to respond. Could you please try rephrasing your question?' }
@@ -1206,48 +1466,33 @@ class AiAgentHaPanel extends LitElement {
 
       let message = { type: 'assistant', text: event.data.answer };
 
-      // Check if the response contains an automation or dashboard suggestion
       try {
-        console.debug("Attempting to parse response as JSON:", event.data.answer);
         let jsonText = event.data.answer;
         
-        // Try to extract JSON from mixed text+JSON responses
         const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
         if (jsonMatch && jsonMatch[0] !== jsonText.trim()) {
-          console.debug("Found JSON within mixed response, extracting:", jsonMatch[0]);
           jsonText = jsonMatch[0];
         }
         
         const response = JSON.parse(jsonText);
-        console.debug("Parsed JSON response:", response);
         
         if (response.request_type === 'automation_suggestion') {
-          console.debug("Found automation suggestion");
           message.automation = response.automation;
           message.text = response.message || 'I found an automation that might help you. Would you like me to create it?';
         } else if (response.request_type === 'dashboard_suggestion') {
-          console.debug("Found dashboard suggestion:", response.dashboard);
           message.dashboard = response.dashboard;
           message.text = response.message || 'I created a dashboard configuration for you. Would you like me to create it?';
         } else if (response.request_type === 'final_response') {
-          // If it's a final response, use the response field
           message.text = response.response || response.message || event.data.answer;
         } else if (response.message) {
-          // If there's a message field, use it
           message.text = response.message;
         } else if (response.response) {
-          // If there's a response field, use it
           message.text = response.response;
         }
-        // If none of the above, keep the original event.data.answer as message.text
       } catch (e) {
-        // Not a JSON response, treat as normal message
-        console.debug("Response is not JSON, using as-is:", event.data.answer);
-        console.debug("JSON parse error:", e);
-        // message.text is already set to event.data.answer
+        // Not a JSON response, use as-is
       }
 
-      console.debug("Adding message to UI:", message);
       this._messages = [...this._messages, message];
     } else {
       this._error = event.data.error || 'An error occurred';
@@ -1276,9 +1521,6 @@ class AiAgentHaPanel extends LitElement {
         automation: automation
       });
 
-      console.debug("Automation creation result:", result);
-
-      // The result should be an object with a message property
       if (result && result.message) {
         this._messages = [...this._messages, {
           type: 'assistant',
@@ -1318,9 +1560,6 @@ class AiAgentHaPanel extends LitElement {
         dashboard_config: dashboard
       });
 
-      console.debug("Dashboard creation result:", result);
-
-      // The result should be an object with a message property
       if (result && result.message) {
         this._messages = [...this._messages, {
           type: 'assistant',
@@ -1353,25 +1592,36 @@ class AiAgentHaPanel extends LitElement {
   }
 
   shouldUpdate(changedProps) {
-    // Only update if internal state changes, not on every hass update
     return changedProps.has('_messages') ||
            changedProps.has('_isLoading') ||
            changedProps.has('_error') ||
-           changedProps.has('_promptHistory') ||
-           changedProps.has('_showPredefinedPrompts') ||
-           changedProps.has('_showPromptHistory') ||
            changedProps.has('_availableProviders') ||
            changedProps.has('_selectedProvider') ||
-           changedProps.has('_showProviderDropdown');
+           changedProps.has('_showProviderDropdown') ||
+           changedProps.has('_sessions') ||
+           changedProps.has('_activeSessionId') ||
+           changedProps.has('_sidebarOpen') ||
+           changedProps.has('_sessionsLoading');
   }
 
-  _clearChat() {
+  async _clearChat() {
+    if (this._activeSessionId && this.hass) {
+      try {
+        await this.hass.callWS({
+          type: "ai_agent_ha/sessions/delete",
+          session_id: this._activeSessionId
+        });
+        this._sessions = this._sessions.filter(s => s.session_id !== this._activeSessionId);
+      } catch (error) {
+        console.error("Failed to delete session:", error);
+      }
+    }
+    this._activeSessionId = null;
     this._messages = [];
     this._clearLoadingState();
     this._error = null;
     this._pendingAutomation = null;
     this._debugInfo = null;
-    // Don't clear prompt history - users might want to keep it
   }
 
   _resolveProviderFromEntry(entry) {
@@ -1480,5 +1730,3 @@ class AiAgentHaPanel extends LitElement {
 }
 
 customElements.define("ai_agent_ha-panel", AiAgentHaPanel);
-
-console.log("AI Agent HA Panel registered");

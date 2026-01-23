@@ -28,6 +28,9 @@ AI_PROVIDERS = [
     "local",
 ]
 
+# Valid providers for WebSocket API validation
+VALID_PROVIDERS = frozenset(AI_PROVIDERS)
+
 # AI Provider constants
 CONF_MODELS = "models"
 

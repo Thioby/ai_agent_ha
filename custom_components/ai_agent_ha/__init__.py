@@ -15,6 +15,7 @@ from homeassistant.helpers.typing import ConfigType
 
 from .agent import AiAgentHaAgent
 from .const import DOMAIN
+from .websocket_api import async_register_websocket_commands
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise ConfigEntryNotReady("Config entry missing required 'ai_provider' key")
 
         if DOMAIN not in hass.data:
-            hass.data[DOMAIN] = {"agents": {}, "configs": {}}
+            hass.data[DOMAIN] = {"agents": {}, "configs": {}, "_ws_registered": False}
 
         provider = config_data["ai_provider"]
 
@@ -354,6 +355,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         DOMAIN, "update_dashboard", async_handle_update_dashboard
     )
 
+    # Register WebSocket API commands (only once)
+    if not hass.data[DOMAIN].get("_ws_registered"):
+        async_register_websocket_commands(hass)
+        hass.data[DOMAIN]["_ws_registered"] = True
+
     # Register static path for frontend
     await hass.http.async_register_static_paths(
         [
@@ -413,7 +419,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_remove(DOMAIN, "load_prompt_history")
     hass.services.async_remove(DOMAIN, "create_dashboard")
     hass.services.async_remove(DOMAIN, "update_dashboard")
-    # Remove data
+
+    # Clean up storage cache instances
+    storage_cache_prefix = f"{DOMAIN}_storage_"
+    storage_keys = [
+        k for k in list(hass.data.keys()) if k.startswith(storage_cache_prefix)
+    ]
+    for key in storage_keys:
+        hass.data.pop(key, None)
+
+    # Remove domain data
     if DOMAIN in hass.data:
         hass.data.pop(DOMAIN)
 
