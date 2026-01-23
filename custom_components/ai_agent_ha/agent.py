@@ -1105,8 +1105,10 @@ class AiAgentHaAgent:
             "- get_calendar_events(entity_id?): Get calendar events\n"
             "- get_automations(): Get all automations\n"
             "- get_weather_data(): Get current weather and forecast data\n"
-            "- get_entity_registry(): Get entity registry entries (now includes device_class, state_class, unit_of_measurement)\n"
-            "- get_device_registry(): Get device registry entries\n"
+            "- get_entity_registry_summary(): Get counts of entities by domain/area/device_class (CALL THIS FIRST!)\n"
+            "- get_entity_registry(domain?, area_id?, device_class?, limit?, offset?): Get entity registry with filtering/pagination (max 50 by default)\n"
+            "- get_device_registry_summary(): Get counts of devices by area/manufacturer (CALL THIS FIRST!)\n"
+            "- get_device_registry(area_id?, manufacturer?, limit?, offset?): Get device registry with filtering/pagination (max 50 by default)\n"
             "- get_area_registry(): Get room/area information\n"
             "- get_history(entity_id, hours): Get historical state changes\n"
             "- get_person_data(): Get person tracking information\n"
@@ -1120,7 +1122,12 @@ class AiAgentHaAgent:
             "- create_dashboard(dashboard_config): Create a new dashboard with the provided configuration\n"
             "- update_dashboard(dashboard_url, dashboard_config): Update an existing dashboard configuration\n\n"
             + _WEB_TOOLS_PROMPT
-            + "IMPORTANT DEVICE_CLASS GUIDANCE:\n"
+            + "SMART DATA RETRIEVAL (IMPORTANT):\n"
+            "- For entity_registry and device_registry, ALWAYS call *_summary() first to understand the data landscape!\n"
+            "- Summary endpoints return counts (~200 tokens) instead of full data (10,000+ tokens)\n"
+            "- Then use filters (domain, area_id, device_class, manufacturer) to fetch only what you need\n"
+            "- Example: get_entity_registry_summary() shows 12 temperature sensors -> get_entity_registry(device_class='temperature')\n\n"
+            "IMPORTANT DEVICE_CLASS GUIDANCE:\n"
             "- Many sensors have a 'device_class' attribute (temperature, humidity, motion, etc.)\n"
             "- Use get_climate_related_entities() for climate dashboards (includes climate.* entities and temperature/humidity sensors)\n"
             "- Use get_entities_by_device_class(device_class) to filter by device_class (e.g., 'temperature', 'humidity', 'motion')\n"
@@ -1221,8 +1228,10 @@ class AiAgentHaAgent:
             "- get_calendar_events(entity_id?): Get calendar events\n"
             "- get_automations(): Get all automations\n"
             "- get_weather_data(): Get current weather and forecast data\n"
-            "- get_entity_registry(): Get entity registry entries (now includes device_class, state_class, unit_of_measurement)\n"
-            "- get_device_registry(): Get device registry entries\n"
+            "- get_entity_registry_summary(): Get counts of entities by domain/area/device_class (CALL THIS FIRST!)\n"
+            "- get_entity_registry(domain?, area_id?, device_class?, limit?, offset?): Get entity registry with filtering/pagination (max 50 by default)\n"
+            "- get_device_registry_summary(): Get counts of devices by area/manufacturer (CALL THIS FIRST!)\n"
+            "- get_device_registry(area_id?, manufacturer?, limit?, offset?): Get device registry with filtering/pagination (max 50 by default)\n"
             "- get_area_registry(): Get room/area information\n"
             "- get_history(entity_id, hours): Get historical state changes\n"
             "- get_person_data(): Get person tracking information\n"
@@ -1236,7 +1245,12 @@ class AiAgentHaAgent:
             "- create_dashboard(dashboard_config): Create a new dashboard with the provided configuration\n"
             "- update_dashboard(dashboard_url, dashboard_config): Update an existing dashboard configuration\n\n"
             + _WEB_TOOLS_PROMPT
-            + "IMPORTANT DEVICE_CLASS GUIDANCE:\n"
+            + "SMART DATA RETRIEVAL (IMPORTANT):\n"
+            "- For entity_registry and device_registry, ALWAYS call *_summary() first to understand the data landscape!\n"
+            "- Summary endpoints return counts (~200 tokens) instead of full data (10,000+ tokens)\n"
+            "- Then use filters (domain, area_id, device_class, manufacturer) to fetch only what you need\n"
+            "- Example: get_entity_registry_summary() shows 12 temperature sensors -> get_entity_registry(device_class='temperature')\n\n"
+            "IMPORTANT DEVICE_CLASS GUIDANCE:\n"
             "- Many sensors have a 'device_class' attribute (temperature, humidity, motion, etc.)\n"
             "- Use get_climate_related_entities() for climate dashboards (includes climate.* entities and temperature/humidity sensors)\n"
             "- Use get_entities_by_device_class(device_class) to filter by device_class (e.g., 'temperature', 'humidity', 'motion')\n"
@@ -1834,12 +1848,34 @@ class AiAgentHaAgent:
             _LOGGER.exception("Error getting automations: %s", str(e))
             return [{"error": f"Error getting automations: {str(e)}"}]
 
-    async def get_entity_registry(self) -> List[Dict]:
-        """Get entity registry entries with device_class and other metadata.
+    async def get_entity_registry(
+        self,
+        domain: Optional[str] = None,
+        area_id: Optional[str] = None,
+        device_class: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Get entity registry entries with filtering and pagination.
 
-        Area information is resolved from the entity or its device.
+        Args:
+            domain: Filter by entity domain (e.g., 'sensor', 'light', 'switch')
+            area_id: Filter by area ID
+            device_class: Filter by device class (e.g., 'temperature', 'humidity')
+            limit: Maximum number of entities to return (default 50, max 200)
+            offset: Number of entities to skip for pagination
+
+        Returns:
+            Dict with entities list, total_count, has_more flag, and filter metadata
         """
-        _LOGGER.debug("Requesting all entity registry entries")
+        _LOGGER.debug(
+            "Requesting entity registry with filters: domain=%s, area_id=%s, device_class=%s, limit=%d, offset=%d",
+            domain,
+            area_id,
+            device_class,
+            limit,
+            offset,
+        )
         try:
             from homeassistant.helpers import area_registry as ar
             from homeassistant.helpers import device_registry as dr
@@ -1847,94 +1883,351 @@ class AiAgentHaAgent:
 
             entity_registry = er.async_get(self.hass)
             if not entity_registry:
-                return []
+                return {"entities": [], "total_count": 0, "has_more": False}
 
             device_registry = dr.async_get(self.hass)
             area_registry = ar.async_get(self.hass)
 
-            result = []
+            # Build area_id to area_name mapping
+            area_names: Dict[str, str] = {}
+            if area_registry:
+                for area in area_registry.areas.values():
+                    area_names[area.id] = area.name
+
+            # Enforce limits
+            limit = min(limit, 200)  # Hard cap at 200
+            limit = max(limit, 1)  # Minimum 1
+            offset = max(offset, 0)  # Minimum 0 (no negative offsets)
+
+            all_matching = []
+            filters_applied: Dict[str, Any] = {}
+
+            if domain:
+                filters_applied["domain"] = domain
+            if area_id:
+                filters_applied["area_id"] = area_id
+            if device_class:
+                filters_applied["device_class"] = device_class
+
             for entry in entity_registry.entities.values():
-                # Get the current state to access device_class and other attributes
+                # Skip disabled entities
+                if entry.disabled:
+                    continue
+
+                # Filter by domain
+                entity_domain = entry.entity_id.split(".")[0]
+                if domain and entity_domain != domain:
+                    continue
+
+                # Get the current state to access device_class
                 state = self.hass.states.get(entry.entity_id)
-                device_class = state.attributes.get("device_class") if state else None
+                entity_device_class = (
+                    state.attributes.get("device_class") if state else None
+                )
                 state_class = state.attributes.get("state_class") if state else None
                 unit_of_measurement = (
                     state.attributes.get("unit_of_measurement") if state else None
                 )
 
+                # Filter by device_class
+                if device_class and entity_device_class != device_class:
+                    continue
+
                 # Resolve area_id and area_name
-                # First check entity's direct area assignment
-                area_id = entry.area_id
-                area_name = None
+                resolved_area_id = entry.area_id
+                resolved_area_name = None
 
                 # If entity doesn't have area, check device's area
-                if not area_id and entry.device_id and device_registry:
+                if not resolved_area_id and entry.device_id and device_registry:
                     device_entry = device_registry.async_get(entry.device_id)
                     if device_entry and hasattr(device_entry, "area_id"):
-                        area_id = device_entry.area_id
+                        resolved_area_id = device_entry.area_id
+
+                # Filter by area_id
+                if area_id and resolved_area_id != area_id:
+                    continue
 
                 # Resolve area_name from area_id
-                if area_id and area_registry:
-                    area_entry = area_registry.async_get_area(area_id)
-                    if area_entry and hasattr(area_entry, "name"):
-                        area_name = area_entry.name
+                if resolved_area_id:
+                    resolved_area_name = area_names.get(
+                        resolved_area_id, resolved_area_id
+                    )
 
-                result.append(
+                all_matching.append(
                     {
                         "entity_id": entry.entity_id,
                         "device_id": entry.device_id,
                         "platform": entry.platform,
-                        "disabled": entry.disabled,
-                        "area_id": area_id,
-                        "area_name": area_name,
+                        "area_id": resolved_area_id,
+                        "area_name": resolved_area_name,
                         "original_name": entry.original_name,
-                        "unique_id": entry.unique_id,
-                        "device_class": device_class,
+                        "device_class": entity_device_class,
                         "state_class": state_class,
                         "unit_of_measurement": unit_of_measurement,
                     }
                 )
 
-            return result
+            total_count = len(all_matching)
+            paginated = all_matching[offset : offset + limit]
+            has_more = (offset + limit) < total_count
+
+            return {
+                "entities": paginated,
+                "total_count": total_count,
+                "returned_count": len(paginated),
+                "offset": offset,
+                "limit": limit,
+                "has_more": has_more,
+                "filters_applied": filters_applied,
+            }
         except Exception as e:
             _LOGGER.exception("Error getting entity registry entries: %s", str(e))
-            return [{"error": f"Error getting entity registry entries: {str(e)}"}]
+            return {"error": f"Error getting entity registry entries: {str(e)}"}
 
-    async def get_device_registry(self) -> List[Dict]:
-        """Get device registry entries"""
-        _LOGGER.debug("Requesting all device registry entries")
+    async def get_entity_registry_summary(self) -> Dict[str, Any]:
+        """Get a lightweight summary of entity registry for LLM context optimization.
+
+        Returns counts by domain, area, and device_class without full entity data.
+        This is much more token-efficient (~200 tokens vs 10,000+ for full registry).
+        """
+        _LOGGER.debug("Requesting entity registry summary")
         try:
+            from homeassistant.helpers import area_registry as ar
+            from homeassistant.helpers import device_registry as dr
+            from homeassistant.helpers import entity_registry as er
+
+            entity_registry = er.async_get(self.hass)
+            if not entity_registry:
+                return {
+                    "total_entities": 0,
+                    "by_domain": {},
+                    "by_area": {},
+                    "by_device_class": {},
+                }
+
+            device_registry = dr.async_get(self.hass)
+            area_registry = ar.async_get(self.hass)
+
+            # Build area_id to area_name mapping
+            area_names: Dict[str, str] = {}
+            if area_registry:
+                for area in area_registry.areas.values():
+                    area_names[area.id] = area.name
+
+            by_domain: Dict[str, int] = {}
+            by_area: Dict[str, int] = {}
+            by_device_class: Dict[str, int] = {}
+            total = 0
+
+            for entry in entity_registry.entities.values():
+                if entry.disabled:
+                    continue  # Skip disabled entities in summary
+
+                total += 1
+
+                # Count by domain
+                domain = entry.entity_id.split(".")[0]
+                by_domain[domain] = by_domain.get(domain, 0) + 1
+
+                # Resolve area (from entity or device)
+                area_id = entry.area_id
+                if not area_id and entry.device_id and device_registry:
+                    device_entry = device_registry.async_get(entry.device_id)
+                    if device_entry:
+                        area_id = device_entry.area_id
+
+                if area_id:
+                    area_name = area_names.get(area_id, area_id)
+                    by_area[area_name] = by_area.get(area_name, 0) + 1
+                else:
+                    by_area["unassigned"] = by_area.get("unassigned", 0) + 1
+
+                # Count by device_class
+                state = self.hass.states.get(entry.entity_id)
+                if state:
+                    device_class = state.attributes.get("device_class")
+                    if device_class:
+                        by_device_class[device_class] = (
+                            by_device_class.get(device_class, 0) + 1
+                        )
+
+            return {
+                "total_entities": total,
+                "by_domain": dict(
+                    sorted(by_domain.items(), key=lambda x: x[1], reverse=True)
+                ),
+                "by_area": dict(
+                    sorted(by_area.items(), key=lambda x: x[1], reverse=True)
+                ),
+                "by_device_class": dict(
+                    sorted(by_device_class.items(), key=lambda x: x[1], reverse=True)
+                ),
+            }
+        except Exception as e:
+            _LOGGER.exception("Error getting entity registry summary: %s", str(e))
+            return {"error": f"Error getting entity registry summary: {str(e)}"}
+
+    async def get_device_registry(
+        self,
+        area_id: Optional[str] = None,
+        manufacturer: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Get device registry entries with filtering and pagination.
+
+        Args:
+            area_id: Filter by area ID
+            manufacturer: Filter by manufacturer name
+            limit: Maximum number of devices to return (default 50, max 200)
+            offset: Number of devices to skip for pagination
+
+        Returns:
+            Dict with devices list, total_count, has_more flag, and filter metadata
+        """
+        _LOGGER.debug(
+            "Requesting device registry with filters: area_id=%s, manufacturer=%s, limit=%d, offset=%d",
+            area_id,
+            manufacturer,
+            limit,
+            offset,
+        )
+        try:
+            from homeassistant.helpers import area_registry as ar
             from homeassistant.helpers import device_registry as dr
 
             registry = dr.async_get(self.hass)
             if not registry:
-                return []
-            return [
-                {
-                    "id": device.id,
-                    "name": device.name,
-                    "model": device.model,
-                    "manufacturer": device.manufacturer,
-                    "sw_version": device.sw_version,
-                    "hw_version": device.hw_version,
-                    "connections": (
-                        list(device.connections) if device.connections else []
-                    ),
-                    "identifiers": (
-                        list(device.identifiers) if device.identifiers else []
-                    ),
-                    "area_id": device.area_id,
-                    "disabled": device.disabled_by is not None,
-                    "entry_type": (
-                        device.entry_type.value if device.entry_type else None
-                    ),
-                    "name_by_user": device.name_by_user,
-                }
-                for device in registry.devices.values()
-            ]
+                return {"devices": [], "total_count": 0, "has_more": False}
+
+            area_registry = ar.async_get(self.hass)
+
+            # Build area_id to area_name mapping
+            area_names: Dict[str, str] = {}
+            if area_registry:
+                for area in area_registry.areas.values():
+                    area_names[area.id] = area.name
+
+            # Enforce limits
+            limit = min(limit, 200)  # Hard cap at 200
+            limit = max(limit, 1)  # Minimum 1
+            offset = max(offset, 0)  # Minimum 0 (no negative offsets)
+
+            all_matching = []
+            filters_applied: Dict[str, Any] = {}
+
+            if area_id:
+                filters_applied["area_id"] = area_id
+            if manufacturer:
+                filters_applied["manufacturer"] = manufacturer
+
+            for device in registry.devices.values():
+                # Skip disabled devices
+                if device.disabled_by is not None:
+                    continue
+
+                # Filter by area_id
+                if area_id and device.area_id != area_id:
+                    continue
+
+                # Filter by manufacturer (case-insensitive partial match)
+                if manufacturer:
+                    device_manufacturer = device.manufacturer or ""
+                    if manufacturer.lower() not in device_manufacturer.lower():
+                        continue
+
+                # Resolve area_name
+                area_name = None
+                if device.area_id:
+                    area_name = area_names.get(device.area_id, device.area_id)
+
+                all_matching.append(
+                    {
+                        "id": device.id,
+                        "name": device.name,
+                        "model": device.model,
+                        "manufacturer": device.manufacturer,
+                        "area_id": device.area_id,
+                        "area_name": area_name,
+                        "sw_version": device.sw_version,
+                        "hw_version": device.hw_version,
+                        "name_by_user": device.name_by_user,
+                    }
+                )
+
+            total_count = len(all_matching)
+            paginated = all_matching[offset : offset + limit]
+            has_more = (offset + limit) < total_count
+
+            return {
+                "devices": paginated,
+                "total_count": total_count,
+                "returned_count": len(paginated),
+                "offset": offset,
+                "limit": limit,
+                "has_more": has_more,
+                "filters_applied": filters_applied,
+            }
         except Exception as e:
             _LOGGER.exception("Error getting device registry entries: %s", str(e))
-            return [{"error": f"Error getting device registry entries: {str(e)}"}]
+            return {"error": f"Error getting device registry entries: {str(e)}"}
+
+    async def get_device_registry_summary(self) -> Dict[str, Any]:
+        """Get a lightweight summary of device registry for LLM context optimization.
+
+        Returns counts by area and manufacturer without full device data.
+        This is much more token-efficient than fetching all devices.
+        """
+        _LOGGER.debug("Requesting device registry summary")
+        try:
+            from homeassistant.helpers import area_registry as ar
+            from homeassistant.helpers import device_registry as dr
+
+            device_registry = dr.async_get(self.hass)
+            if not device_registry:
+                return {"total_devices": 0, "by_area": {}, "by_manufacturer": {}}
+
+            area_registry = ar.async_get(self.hass)
+
+            # Build area_id to area_name mapping
+            area_names: Dict[str, str] = {}
+            if area_registry:
+                for area in area_registry.areas.values():
+                    area_names[area.id] = area.name
+
+            by_area: Dict[str, int] = {}
+            by_manufacturer: Dict[str, int] = {}
+            total = 0
+
+            for device in device_registry.devices.values():
+                if device.disabled_by is not None:
+                    continue  # Skip disabled devices
+
+                total += 1
+
+                # Count by area
+                if device.area_id:
+                    area_name = area_names.get(device.area_id, device.area_id)
+                    by_area[area_name] = by_area.get(area_name, 0) + 1
+                else:
+                    by_area["unassigned"] = by_area.get("unassigned", 0) + 1
+
+                # Count by manufacturer
+                manufacturer = device.manufacturer or "unknown"
+                by_manufacturer[manufacturer] = by_manufacturer.get(manufacturer, 0) + 1
+
+            return {
+                "total_devices": total,
+                "by_area": dict(
+                    sorted(by_area.items(), key=lambda x: x[1], reverse=True)
+                ),
+                "by_manufacturer": dict(
+                    sorted(by_manufacturer.items(), key=lambda x: x[1], reverse=True)
+                ),
+            }
+        except Exception as e:
+            _LOGGER.exception("Error getting device registry summary: %s", str(e))
+            return {"error": f"Error getting device registry summary: {str(e)}"}
 
     async def get_history(self, entity_id: str, hours: int = 24) -> List[Dict]:
         """Get historical state changes for an entity"""
@@ -3121,7 +3414,9 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             "get_calendar_events",
                             "get_automations",
                             "get_entity_registry",
+                            "get_entity_registry_summary",
                             "get_device_registry",
+                            "get_device_registry_summary",
                             "get_weather_data",
                             "get_area_registry",
                             "get_history",
@@ -3201,9 +3496,24 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             elif request_type == "get_automations":
                                 data = await self.get_automations()
                             elif request_type == "get_entity_registry":
-                                data = await self.get_entity_registry()
+                                data = await self.get_entity_registry(
+                                    domain=parameters.get("domain"),
+                                    area_id=parameters.get("area_id"),
+                                    device_class=parameters.get("device_class"),
+                                    limit=int(parameters.get("limit") or 50),
+                                    offset=int(parameters.get("offset") or 0),
+                                )
+                            elif request_type == "get_entity_registry_summary":
+                                data = await self.get_entity_registry_summary()
                             elif request_type == "get_device_registry":
-                                data = await self.get_device_registry()
+                                data = await self.get_device_registry(
+                                    area_id=parameters.get("area_id"),
+                                    manufacturer=parameters.get("manufacturer"),
+                                    limit=int(parameters.get("limit") or 50),
+                                    offset=int(parameters.get("offset") or 0),
+                                )
+                            elif request_type == "get_device_registry_summary":
+                                data = await self.get_device_registry_summary()
                             elif request_type == "get_weather_data":
                                 data = await self.get_weather_data()
                             elif request_type == "get_area_registry":
