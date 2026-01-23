@@ -3294,7 +3294,9 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                 )
                 _LOGGER.debug("Added user query to conversation history")
 
-            max_iterations = 5  # Prevent infinite loops
+            max_iterations = (
+                10  # Prevent infinite loops (increased for pagination workflow)
+            )
             iteration = 0
 
             while iteration < max_iterations:

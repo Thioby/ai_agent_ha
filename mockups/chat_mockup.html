@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Agent HA - Chat Mockup</title>
+  <style>
+    /* ============================================
+       HOME ASSISTANT THEME VARIABLES
+       ============================================ */
+    :root {
+      /* Dark theme (HA default) */
+      --primary-color: #03a9f4;
+      --accent-color: #ff9800;
+      --primary-background-color: #111318;
+      --secondary-background-color: #1c1c1c;
+      --card-background-color: #1e1e1e;
+      --primary-text-color: #e1e1e1;
+      --secondary-text-color: #9b9b9b;
+      --disabled-text-color: #6f6f6f;
+      --divider-color: #3d3d3d;
+      --error-color: #db4437;
+      --success-color: #43a047;
+      --warning-color: #ffa600;
+      --info-color: #039be5;
+      
+      /* Shadows */
+      --shadow-elevation-2dp: 0 2px 2px 0 rgba(0,0,0,.14), 0 1px 5px 0 rgba(0,0,0,.12), 0 3px 1px -2px rgba(0,0,0,.2);
+      --shadow-elevation-4dp: 0 4px 5px 0 rgba(0,0,0,.14), 0 1px 10px 0 rgba(0,0,0,.12), 0 2px 4px -1px rgba(0,0,0,.3);
+      
+      /* Sizing */
+      --sidebar-width: 280px;
+      --header-height: 56px;
+      --input-height: 56px;
+    }
+
+    /* ============================================
+       RESET & BASE
+       ============================================ */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Roboto, 'Noto Sans', sans-serif;
+      background-color: var(--primary-background-color);
+      color: var(--primary-text-color);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ============================================
+       MAIN LAYOUT
+       ============================================ */
+    .container {
+      display: flex;
+      height: 100vh;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ============================================
+       SIDEBAR - SESSION LIST
+       ============================================ */
+    .sidebar {
+      width: var(--sidebar-width);
+      background-color: var(--secondary-background-color);
+      border-right: 1px solid var(--divider-color);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      transition: transform 0.3s ease, width 0.3s ease;
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--divider-color);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .sidebar-title {
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--primary-text-color);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sidebar-title svg {
+      width: 24px;
+      height: 24px;
+      fill: var(--primary-color);
+    }
+
+    .new-chat-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+
+    .new-chat-btn:hover {
+      background-color: #0288d1;
+    }
+
+    .new-chat-btn:active {
+      transform: scale(0.98);
+    }
+
+    .new-chat-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    /* Session List */
+    .session-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .session-item {
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      margin-bottom: 4px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      position: relative;
+    }
+
+    .session-item:hover {
+      background-color: var(--card-background-color);
+    }
+
+    .session-item.active {
+      background-color: rgba(3, 169, 244, 0.15);
+      border-left: 3px solid var(--primary-color);
+    }
+
+    .session-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--primary-text-color);
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-right: 24px;
+    }
+
+    .session-preview {
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .session-time {
+      font-size: 11px;
+      color: var(--disabled-text-color);
+      margin-top: 4px;
+    }
+
+    .session-delete {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .session-item:hover .session-delete {
+      opacity: 1;
+    }
+
+    .session-delete:hover {
+      background-color: rgba(219, 68, 55, 0.2);
+    }
+
+    .session-delete svg {
+      width: 16px;
+      height: 16px;
+      fill: var(--secondary-text-color);
+    }
+
+    .session-delete:hover svg {
+      fill: var(--error-color);
+    }
+
+    /* ============================================
+       MAIN CHAT AREA
+       ============================================ */
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background-color: var(--primary-background-color);
+      min-width: 0;
+    }
+
+    /* Chat Header */
+    .chat-header {
+      height: var(--header-height);
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--divider-color);
+      background-color: var(--secondary-background-color);
+    }
+
+    .chat-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .menu-toggle {
+      display: none;
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      border-radius: 50%;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .menu-toggle:hover {
+      background-color: var(--card-background-color);
+    }
+
+    .menu-toggle svg {
+      width: 24px;
+      height: 24px;
+      fill: var(--primary-text-color);
+    }
+
+    .chat-title {
+      font-size: 18px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .chat-title svg {
+      width: 24px;
+      height: 24px;
+      fill: var(--primary-color);
+    }
+
+    .provider-select {
+      padding: 8px 12px;
+      background-color: var(--card-background-color);
+      color: var(--primary-text-color);
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .provider-select:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+
+    /* Messages Container */
+    .messages-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Message Bubbles */
+    .message {
+      display: flex;
+      flex-direction: column;
+      max-width: 80%;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .message.user {
+      align-self: flex-end;
+    }
+
+    .message.assistant {
+      align-self: flex-start;
+    }
+
+    .message-bubble {
+      padding: 12px 16px;
+      border-radius: 16px;
+      line-height: 1.5;
+      font-size: 14px;
+    }
+
+    .message.user .message-bubble {
+      background-color: var(--primary-color);
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.assistant .message-bubble {
+      background-color: var(--card-background-color);
+      color: var(--primary-text-color);
+      border-bottom-left-radius: 4px;
+      border: 1px solid var(--divider-color);
+    }
+
+    .message-time {
+      font-size: 11px;
+      color: var(--disabled-text-color);
+      margin-top: 4px;
+      padding: 0 4px;
+    }
+
+    .message.user .message-time {
+      text-align: right;
+    }
+
+    /* Typing Indicator */
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 12px 16px;
+      background-color: var(--card-background-color);
+      border-radius: 16px;
+      border-bottom-left-radius: 4px;
+      border: 1px solid var(--divider-color);
+      align-self: flex-start;
+    }
+
+    .typing-dot {
+      width: 8px;
+      height: 8px;
+      background-color: var(--secondary-text-color);
+      border-radius: 50%;
+      animation: typingBounce 1.4s infinite ease-in-out;
+    }
+
+    .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+    .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+    .typing-dot:nth-child(3) { animation-delay: 0s; }
+
+    @keyframes typingBounce {
+      0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+      }
+      40% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    /* Empty State */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--secondary-text-color);
+      text-align: center;
+      padding: 32px;
+    }
+
+    .empty-state svg {
+      width: 64px;
+      height: 64px;
+      fill: var(--disabled-text-color);
+      margin-bottom: 16px;
+    }
+
+    .empty-state h3 {
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--primary-text-color);
+      margin-bottom: 8px;
+    }
+
+    .empty-state p {
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+
+    .empty-state button {
+      padding: 12px 24px;
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .empty-state button:hover {
+      background-color: #0288d1;
+    }
+
+    /* ============================================
+       INPUT AREA
+       ============================================ */
+    .input-area {
+      padding: 16px;
+      border-top: 1px solid var(--divider-color);
+      background-color: var(--secondary-background-color);
+    }
+
+    .input-container {
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .input-wrapper {
+      flex: 1;
+      position: relative;
+    }
+
+    .message-input {
+      width: 100%;
+      min-height: 48px;
+      max-height: 200px;
+      padding: 12px 16px;
+      background-color: var(--card-background-color);
+      color: var(--primary-text-color);
+      border: 1px solid var(--divider-color);
+      border-radius: 24px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: none;
+      line-height: 1.5;
+    }
+
+    .message-input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+
+    .message-input::placeholder {
+      color: var(--disabled-text-color);
+    }
+
+    .send-btn {
+      width: 48px;
+      height: 48px;
+      border: none;
+      background-color: var(--primary-color);
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s, transform 0.1s;
+      flex-shrink: 0;
+    }
+
+    .send-btn:hover {
+      background-color: #0288d1;
+    }
+
+    .send-btn:active {
+      transform: scale(0.95);
+    }
+
+    .send-btn:disabled {
+      background-color: var(--disabled-text-color);
+      cursor: not-allowed;
+    }
+
+    .send-btn svg {
+      width: 24px;
+      height: 24px;
+      fill: white;
+    }
+
+    /* ============================================
+       MOBILE RESPONSIVE
+       ============================================ */
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 100;
+        transform: translateX(-100%);
+      }
+
+      .sidebar.open {
+        transform: translateX(0);
+        box-shadow: var(--shadow-elevation-4dp);
+      }
+
+      .menu-toggle {
+        display: flex;
+      }
+
+      .overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 99;
+      }
+
+      .overlay.show {
+        display: block;
+      }
+
+      .message {
+        max-width: 90%;
+      }
+    }
+
+    /* ============================================
+       SCROLLBAR STYLING
+       ============================================ */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background-color: var(--divider-color);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: var(--secondary-text-color);
+    }
+  </style>
+</head>
+<body>
+  <!-- Mobile Overlay -->
+  <div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+  <div class="container">
+    <!-- Sidebar - Session List -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title">
+          <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+          Conversations
+        </div>
+        <button class="new-chat-btn" onclick="createNewSession()">
+          <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          New Chat
+        </button>
+      </div>
+      
+      <div class="session-list" id="sessionList">
+        <!-- Active Session -->
+        <div class="session-item active" onclick="selectSession(this)">
+          <span class="session-title">Kitchen automation help</span>
+          <span class="session-preview">How do I create an automation for...</span>
+          <span class="session-time">Today, 10:23 AM</span>
+          <button class="session-delete" onclick="event.stopPropagation(); deleteSession(this)">
+            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
+
+        <!-- Other Sessions -->
+        <div class="session-item" onclick="selectSession(this)">
+          <span class="session-title">Living room lights setup</span>
+          <span class="session-preview">I need help configuring my Philips Hue...</span>
+          <span class="session-time">Yesterday</span>
+          <button class="session-delete" onclick="event.stopPropagation(); deleteSession(this)">
+            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
+
+        <div class="session-item" onclick="selectSession(this)">
+          <span class="session-title">Dashboard card design</span>
+          <span class="session-preview">Can you help me create a custom card...</span>
+          <span class="session-time">2 days ago</span>
+          <button class="session-delete" onclick="event.stopPropagation(); deleteSession(this)">
+            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
+
+        <div class="session-item" onclick="selectSession(this)">
+          <span class="session-title">Temperature sensors</span>
+          <span class="session-preview">What's the best way to monitor...</span>
+          <span class="session-time">Last week</span>
+          <button class="session-delete" onclick="event.stopPropagation(); deleteSession(this)">
+            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Chat Area -->
+    <main class="chat-area">
+      <!-- Chat Header -->
+      <header class="chat-header">
+        <div class="chat-header-left">
+          <button class="menu-toggle" onclick="toggleSidebar()">
+            <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+          </button>
+          <div class="chat-title">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            AI Agent HA
+          </div>
+        </div>
+        <select class="provider-select">
+          <option value="anthropic" selected>Claude (Anthropic)</option>
+          <option value="openai">GPT-4 (OpenAI)</option>
+          <option value="google">Gemini (Google)</option>
+          <option value="local">Local (Ollama)</option>
+        </select>
+      </header>
+
+      <!-- Messages -->
+      <div class="messages-container" id="messagesContainer">
+        <!-- User Message -->
+        <div class="message user">
+          <div class="message-bubble">
+            How do I create an automation that turns on the kitchen lights when motion is detected, but only after sunset?
+          </div>
+          <span class="message-time">10:23 AM</span>
+        </div>
+
+        <!-- Assistant Message -->
+        <div class="message assistant">
+          <div class="message-bubble">
+            I'll help you create that automation! Here's how to set it up:
+
+            <br><br><strong>1. Trigger:</strong> Motion sensor state change to "on"
+            <br><strong>2. Condition:</strong> Sun is below horizon
+            <br><strong>3. Action:</strong> Turn on kitchen lights
+
+            <br><br>Here's the YAML configuration:
+            <br><br><code style="background: #2d2d2d; padding: 8px; border-radius: 4px; display: block; margin-top: 8px;">
+automation:<br>
+&nbsp;&nbsp;- alias: "Kitchen lights on motion"<br>
+&nbsp;&nbsp;&nbsp;&nbsp;trigger:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- platform: state<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;entity_id: binary_sensor.kitchen_motion<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;to: "on"<br>
+&nbsp;&nbsp;&nbsp;&nbsp;condition:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- condition: sun<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;after: sunset<br>
+&nbsp;&nbsp;&nbsp;&nbsp;action:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- service: light.turn_on<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;target:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;entity_id: light.kitchen
+            </code>
+
+            <br><br>Would you like me to create this automation for you?
+          </div>
+          <span class="message-time">10:23 AM</span>
+        </div>
+
+        <!-- User Follow-up -->
+        <div class="message user">
+          <div class="message-bubble">
+            Yes, please create it! Also, can you add a condition so it only works on weekdays?
+          </div>
+          <span class="message-time">10:25 AM</span>
+        </div>
+
+        <!-- Assistant Response -->
+        <div class="message assistant">
+          <div class="message-bubble">
+            Done! I've created the automation with the weekday condition. Here's what I added:
+
+            <br><br><code style="background: #2d2d2d; padding: 8px; border-radius: 4px; display: block;">
+condition:<br>
+&nbsp;&nbsp;- condition: time<br>
+&nbsp;&nbsp;&nbsp;&nbsp;weekday:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- mon<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- tue<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- wed<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- thu<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- fri
+            </code>
+
+            <br><br>The automation is now active. You can find it in <strong>Settings > Automations</strong> with the name "Kitchen lights on motion (weekdays)".
+          </div>
+          <span class="message-time">10:25 AM</span>
+        </div>
+
+        <!-- User Message -->
+        <div class="message user">
+          <div class="message-bubble">
+            Perfect! One more thing - can you make the lights turn off automatically after 5 minutes of no motion?
+          </div>
+          <span class="message-time">10:26 AM</span>
+        </div>
+
+        <!-- Typing Indicator (hidden by default, shown during loading) -->
+        <div class="typing-indicator" id="typingIndicator" style="display: none;">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+        </div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-area">
+        <div class="input-container">
+          <div class="input-wrapper">
+            <textarea 
+              class="message-input" 
+              id="messageInput"
+              placeholder="Ask me anything about your Home Assistant..."
+              rows="1"
+              onkeydown="handleKeyDown(event)"
+              oninput="autoResize(this)"
+            ></textarea>
+          </div>
+          <button class="send-btn" onclick="sendMessage()" id="sendBtn">
+            <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ============================================
+    // INTERACTIVE FUNCTIONALITY (Demo purposes)
+    // ============================================
+
+    // Toggle sidebar on mobile
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('overlay');
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('show');
+    }
+
+    // Select a session
+    function selectSession(element) {
+      // Remove active from all
+      document.querySelectorAll('.session-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      // Add active to clicked
+      element.classList.add('active');
+      
+      // Close sidebar on mobile
+      if (window.innerWidth <= 768) {
+        toggleSidebar();
+      }
+    }
+
+    // Create new session
+    function createNewSession() {
+      const sessionList = document.getElementById('sessionList');
+      
+      // Remove active from all existing
+      document.querySelectorAll('.session-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      
+      // Create new session element
+      const newSession = document.createElement('div');
+      newSession.className = 'session-item active';
+      newSession.onclick = function() { selectSession(this); };
+      newSession.innerHTML = `
+        <span class="session-title">New Conversation</span>
+        <span class="session-preview">Start typing to begin...</span>
+        <span class="session-time">Just now</span>
+        <button class="session-delete" onclick="event.stopPropagation(); deleteSession(this)">
+          <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      `;
+      
+      // Insert at top
+      sessionList.insertBefore(newSession, sessionList.firstChild);
+      
+      // Clear messages (show empty state or clear)
+      document.getElementById('messagesContainer').innerHTML = `
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+          <h3>Start a new conversation</h3>
+          <p>Ask me anything about your Home Assistant setup</p>
+        </div>
+      `;
+      
+      // Close sidebar on mobile
+      if (window.innerWidth <= 768) {
+        toggleSidebar();
+      }
+    }
+
+    // Delete session
+    function deleteSession(button) {
+      if (confirm('Delete this conversation?')) {
+        const sessionItem = button.closest('.session-item');
+        const wasActive = sessionItem.classList.contains('active');
+        sessionItem.remove();
+        
+        // If deleted was active, select first remaining
+        if (wasActive) {
+          const firstSession = document.querySelector('.session-item');
+          if (firstSession) {
+            firstSession.classList.add('active');
+          }
+        }
+      }
+    }
+
+    // Send message
+    function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const message = input.value.trim();
+      
+      if (!message) return;
+      
+      const container = document.getElementById('messagesContainer');
+      
+      // Remove empty state if present
+      const emptyState = container.querySelector('.empty-state');
+      if (emptyState) {
+        emptyState.remove();
+      }
+      
+      // Add user message
+      const userMsg = document.createElement('div');
+      userMsg.className = 'message user';
+      userMsg.innerHTML = `
+        <div class="message-bubble">${escapeHtml(message)}</div>
+        <span class="message-time">${getCurrentTime()}</span>
+      `;
+      container.appendChild(userMsg);
+      
+      // Clear input
+      input.value = '';
+      autoResize(input);
+      
+      // Show typing indicator
+      document.getElementById('typingIndicator').style.display = 'flex';
+      
+      // Scroll to bottom
+      container.scrollTop = container.scrollHeight;
+      
+      // Simulate AI response after delay
+      setTimeout(() => {
+        document.getElementById('typingIndicator').style.display = 'none';
+        
+        const aiMsg = document.createElement('div');
+        aiMsg.className = 'message assistant';
+        aiMsg.innerHTML = `
+          <div class="message-bubble">I understand you want to ${escapeHtml(message.toLowerCase())}. Let me help you with that!
+
+          <br><br>This is a mockup response. In the actual implementation, I would process your request and provide a helpful answer about your Home Assistant setup.</div>
+          <span class="message-time">${getCurrentTime()}</span>
+        `;
+        container.appendChild(aiMsg);
+        container.scrollTop = container.scrollHeight;
+      }, 1500);
+    }
+
+    // Handle Enter key
+    function handleKeyDown(event) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+      }
+    }
+
+    // Auto-resize textarea
+    function autoResize(textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+    }
+
+    // Escape HTML to prevent XSS
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Get current time
+    function getCurrentTime() {
+      return new Date().toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    }
+  </script>
+</body>
+</html>
