@@ -1506,6 +1506,11 @@ class AiAgentHaAgent:
             if not config_entry:
                 raise Exception("anthropic_oauth requires config_entry")
             self.ai_client = AnthropicOAuthClient(hass, config_entry, model)
+        elif provider == "gemini_oauth":
+            model = models_config.get("gemini_oauth", "gemini-2.0-flash")
+            if not config_entry:
+                raise Exception("gemini_oauth requires config_entry")
+            self.ai_client = GeminiOAuthClient(hass, config_entry, model)
         elif provider == "alter":
             model = models_config.get("alter", "")
             self.ai_client = AlterClient(config.get("alter_token"), model)
