@@ -23,11 +23,13 @@
             },
             "gemini_oauth": {
                 "title": "Authorize with Google Gemini",
-                "description": "1. Click the link to authorize: [Open Google Authorization]({auth_url})\n2. After authorizing, copy the code shown\n3. Paste it below and click Submit",
+                "description": "1. Select your preferred model\n2. Click the link to authorize: [Open Google Authorization]({auth_url})\n3. After authorizing, copy the code shown\n4. Paste it below and click Submit",
                 "data": {
+                    "model": "Model",
                     "code": "Authorization Code"
                 },
                 "data_description": {
+                    "model": "Select the Gemini model to use",
                     "code": "Paste the authorization code from Google"
                 }
             },

@@ -427,10 +427,21 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
                 self._gemini_pkce_challenge, self._gemini_pkce_verifier
             )
 
+        # Available models for Gemini OAuth
+        gemini_oauth_models = [
+            "gemini-3-pro-preview",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.0-flash",
+            "gemini-2.5-flash-preview",
+            "gemini-2.5-pro-preview",
+        ]
+
         errors = {}
 
         if user_input is not None:
             code = user_input.get("code", "").strip()
+            selected_model = user_input.get("model", "gemini-3-pro-preview")
             if code:
                 try:
                     async with aiohttp.ClientSession() as session:
@@ -453,6 +464,7 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
                                     "refresh_token": result["refresh_token"],
                                     "expires_at": result["expires_at"],
                                 },
+                                "models": {"gemini_oauth": selected_model},
                             },
                         )
                 except aiohttp.ClientError as e:
@@ -466,6 +478,11 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
             description_placeholders={"auth_url": self._gemini_auth_url},
             data_schema=vol.Schema(
                 {
+                    vol.Required(
+                        "model", default="gemini-3-pro-preview"
+                    ): SelectSelector(
+                        SelectSelectorConfig(options=gemini_oauth_models)
+                    ),
                     vol.Required("code"): TextSelector(TextSelectorConfig(type="text")),
                 }
             ),

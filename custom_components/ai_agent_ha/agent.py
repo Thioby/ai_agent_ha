@@ -921,7 +921,7 @@ class AnthropicOAuthClient(BaseAIClient):
 class GeminiOAuthClient(BaseAIClient):
     """Gemini client using OAuth authentication (Google account login)."""
 
-    def __init__(self, hass, config_entry, model="gemini-2.0-flash"):
+    def __init__(self, hass, config_entry, model="gemini-3-pro-preview"):
         import asyncio
 
         self.hass = hass
@@ -939,15 +939,25 @@ class GeminiOAuthClient(BaseAIClient):
         async with self._refresh_lock:
             # Check if token is still valid (with 5 minute buffer)
             if time.time() < self._oauth_data.get("expires_at", 0) - 300:
-                return self._oauth_data["access_token"]
+                access_token = self._oauth_data.get("access_token")
+                if not access_token:
+                    raise GeminiOAuthRefreshError(
+                        "No access token available - re-authentication required"
+                    )
+                return access_token
 
             _LOGGER.debug("Refreshing Gemini OAuth token")
 
+            # Check if refresh token exists
+            refresh_tok = self._oauth_data.get("refresh_token")
+            if not refresh_tok:
+                raise GeminiOAuthRefreshError(
+                    "No refresh token available - re-authentication required"
+                )
+
             try:
                 async with aiohttp.ClientSession() as session:
-                    new_tokens = await refresh_token(
-                        session, self._oauth_data["refresh_token"]
-                    )
+                    new_tokens = await refresh_token(session, refresh_tok)
             except GeminiOAuthRefreshError as e:
                 _LOGGER.error("Gemini OAuth refresh failed: %s", e)
                 raise
@@ -1507,7 +1517,7 @@ class AiAgentHaAgent:
                 raise Exception("anthropic_oauth requires config_entry")
             self.ai_client = AnthropicOAuthClient(hass, config_entry, model)
         elif provider == "gemini_oauth":
-            model = models_config.get("gemini_oauth", "gemini-2.0-flash")
+            model = models_config.get("gemini_oauth", "gemini-3-pro-preview")
             if not config_entry:
                 raise Exception("gemini_oauth requires config_entry")
             self.ai_client = GeminiOAuthClient(hass, config_entry, model)
