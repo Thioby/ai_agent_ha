@@ -1369,11 +1369,38 @@ class AiAgentHaPanel extends LitElement {
       this._clearLoadingState();
 
       if (result.assistant_message) {
+        let content = result.assistant_message.content || '';
+        let automation = result.assistant_message.metadata?.automation;
+        let dashboard = result.assistant_message.metadata?.dashboard;
+
+        // Parse JSON response if present (AI returns structured responses)
+        try {
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.request_type === 'automation_suggestion') {
+              automation = parsed.automation;
+              content = parsed.message || 'I found an automation that might help you.';
+            } else if (parsed.request_type === 'dashboard_suggestion') {
+              dashboard = parsed.dashboard;
+              content = parsed.message || 'I created a dashboard configuration for you.';
+            } else if (parsed.request_type === 'final_response') {
+              content = parsed.response || parsed.message || content;
+            } else if (parsed.message) {
+              content = parsed.message;
+            } else if (parsed.response) {
+              content = parsed.response;
+            }
+          }
+        } catch (e) {
+          // Not JSON, use content as-is
+        }
+
         const assistantMsg = {
           type: 'assistant',
-          text: result.assistant_message.content || '',
-          automation: result.assistant_message.metadata?.automation,
-          dashboard: result.assistant_message.metadata?.dashboard,
+          text: content,
+          automation: automation,
+          dashboard: dashboard,
           status: result.assistant_message.status,
           error_message: result.assistant_message.error_message
         };
