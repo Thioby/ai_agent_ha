@@ -685,5 +685,213 @@ class TestToolSystemPrompt:
         assert "Search" in prompt or "search" in prompt.lower()
 
 
+class TestContext7Tools:
+    """Tests for Context7 tools."""
+
+    def test_context7_resolve_registration(self):
+        """Test that Context7ResolveTool is registered."""
+        from tools.context7 import Context7ResolveTool
+
+        tool_class = ToolRegistry.get_tool_class("context7_resolve")
+        assert tool_class is Context7ResolveTool
+
+    def test_context7_docs_registration(self):
+        """Test that Context7DocsTool is registered."""
+        from tools.context7 import Context7DocsTool
+
+        tool_class = ToolRegistry.get_tool_class("context7_docs")
+        assert tool_class is Context7DocsTool
+
+    def test_context7_resolve_metadata(self):
+        """Test context7_resolve tool metadata."""
+        tool = ToolRegistry.get_tool("context7_resolve")
+        assert tool.id == "context7_resolve"
+        assert tool.category == ToolCategory.WEB
+        assert len(tool.parameters) == 2
+
+        param_names = [p.name for p in tool.parameters]
+        assert "library_name" in param_names
+        assert "query" in param_names
+
+    def test_context7_docs_metadata(self):
+        """Test context7_docs tool metadata."""
+        tool = ToolRegistry.get_tool("context7_docs")
+        assert tool.id == "context7_docs"
+        assert tool.category == ToolCategory.WEB
+        assert len(tool.parameters) == 3
+
+        param_names = [p.name for p in tool.parameters]
+        assert "library_id" in param_names
+        assert "query" in param_names
+        assert "topic" in param_names
+
+    @pytest.mark.asyncio
+    async def test_context7_docs_invalid_library_id(self):
+        """Test that invalid library IDs are rejected."""
+        tool = ToolRegistry.get_tool("context7_docs")
+
+        # Library ID must start with /
+        result = await tool.execute(
+            library_id="facebook/react",  # Missing leading /
+            query="hooks",
+        )
+
+        assert result.success is False
+        assert "Invalid library ID" in result.error
+
+    @pytest.mark.asyncio
+    async def test_context7_resolve_success(self):
+        """Test successful library resolution."""
+        from tools.context7 import Context7ResolveTool
+
+        tool = Context7ResolveTool()
+
+        mock_response_data = {
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [{"type": "text", "text": "Library ID: /facebook/react"}]
+            },
+        }
+
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.text = AsyncMock(
+                return_value=f"data: {json.dumps(mock_response_data)}"
+            )
+
+            mock_context = AsyncMock()
+            mock_context.__aenter__.return_value = mock_response
+            mock_context.__aexit__.return_value = None
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post.return_value = mock_context
+            mock_session_instance.__aenter__ = AsyncMock(
+                return_value=mock_session_instance
+            )
+            mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+            mock_session.return_value = mock_session_instance
+
+            result = await tool.execute(library_name="react", query="hooks")
+
+            assert result.success is True
+            assert (
+                "react" in result.output.lower() or "/facebook/react" in result.output
+            )
+
+    @pytest.mark.asyncio
+    async def test_context7_docs_success(self):
+        """Test successful documentation retrieval."""
+        from tools.context7 import Context7DocsTool
+
+        tool = Context7DocsTool()
+
+        mock_response_data = {
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "# React Hooks\n\nuseEffect is used for side effects...",
+                    }
+                ]
+            },
+        }
+
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.text = AsyncMock(
+                return_value=f"data: {json.dumps(mock_response_data)}"
+            )
+
+            mock_context = AsyncMock()
+            mock_context.__aenter__.return_value = mock_response
+            mock_context.__aexit__.return_value = None
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post.return_value = mock_context
+            mock_session_instance.__aenter__ = AsyncMock(
+                return_value=mock_session_instance
+            )
+            mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+            mock_session.return_value = mock_session_instance
+
+            result = await tool.execute(library_id="/facebook/react", query="useEffect")
+
+            assert result.success is True
+            assert "useEffect" in result.output or "Hooks" in result.output
+
+    @pytest.mark.asyncio
+    async def test_context7_timeout(self):
+        """Test timeout handling."""
+        from tools.context7 import Context7ResolveTool
+
+        tool = Context7ResolveTool()
+
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_session_instance = MagicMock()
+            mock_session_instance.post.side_effect = asyncio.TimeoutError()
+            mock_session_instance.__aenter__ = AsyncMock(
+                return_value=mock_session_instance
+            )
+            mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+            mock_session.return_value = mock_session_instance
+
+            result = await tool.execute(library_name="react", query="hooks")
+
+            assert result.success is False
+            assert "timeout" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_context7_api_error(self):
+        """Test API error handling."""
+        from tools.context7 import Context7ResolveTool
+
+        tool = Context7ResolveTool()
+
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_response = AsyncMock()
+            mock_response.status = 500
+            mock_response.text = AsyncMock(return_value="Internal Server Error")
+
+            mock_context = AsyncMock()
+            mock_context.__aenter__.return_value = mock_response
+            mock_context.__aexit__.return_value = None
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post.return_value = mock_context
+            mock_session_instance.__aenter__ = AsyncMock(
+                return_value=mock_session_instance
+            )
+            mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+            mock_session.return_value = mock_session_instance
+
+            result = await tool.execute(library_name="react", query="hooks")
+
+            assert result.success is False
+            assert "500" in result.error
+
+    def test_context7_parameter_validation(self):
+        """Test parameter validation."""
+        tool = ToolRegistry.get_tool("context7_resolve")
+
+        # Missing required parameters
+        errors = tool.validate_parameters({})
+        assert len(errors) > 0
+
+        # Valid parameters
+        errors = tool.validate_parameters({"library_name": "react", "query": "hooks"})
+        assert len(errors) == 0
+
+    def test_context7_in_system_prompt(self):
+        """Test that context7 tools appear in system prompt."""
+        # Re-import to ensure registration
+        from tools import context7
+
+        prompt = ToolRegistry.get_system_prompt()
+        assert "context7" in prompt.lower()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

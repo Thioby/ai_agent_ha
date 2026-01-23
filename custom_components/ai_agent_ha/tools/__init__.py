@@ -6,6 +6,8 @@ Tools are automatically registered when imported.
 Available Tools:
     - web_fetch: Fetch and parse content from URLs
     - web_search: Search the web using Exa AI
+    - context7_resolve: Resolve library name to Context7 ID
+    - context7_docs: Get documentation from Context7
 
 Usage:
     from tools import ToolRegistry
@@ -58,6 +60,7 @@ from .base import (
 # Each tool module uses @ToolRegistry.register decorator
 from . import webfetch
 from . import websearch
+from . import context7
 
 __all__ = [
     # Base classes
@@ -70,6 +73,7 @@ __all__ = [
     # Tool modules (for direct access if needed)
     "webfetch",
     "websearch",
+    "context7",
 ]
 
 

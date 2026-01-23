@@ -1081,6 +1081,13 @@ class AiAgentHaAgent:
         "  Returns content from relevant websites. Use for current events, recent data\n"
         '  Example: {"request_type": "web_search", "parameters": {"query": "latest home automation news", "num_results": 5}}\n'
         "  Types: 'auto' (balanced), 'fast' (quick), 'deep' (comprehensive)\n\n"
+        "DOCUMENTATION TOOLS (for library/API documentation):\n"
+        "- context7_resolve(library_name, query): Find Context7 library ID for a package\n"
+        "  MUST call this FIRST before context7_docs. Returns IDs like '/facebook/react'\n"
+        '  Example: {"request_type": "context7_resolve", "parameters": {"library_name": "react", "query": "how to use hooks"}}\n'
+        "- context7_docs(library_id, query, topic?): Get documentation from Context7\n"
+        "  Requires library_id from context7_resolve. Returns docs and code examples\n"
+        '  Example: {"request_type": "context7_docs", "parameters": {"library_id": "/facebook/react", "query": "useEffect cleanup"}}\n\n'
     )
 
     SYSTEM_PROMPT = {
@@ -3130,6 +3137,9 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             # Web tools
                             "web_fetch",
                             "web_search",
+                            # Documentation tools
+                            "context7_resolve",
+                            "context7_docs",
                         ]
 
                         if (
@@ -3280,6 +3290,50 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                 else:
                                     data = {
                                         "error": result.error or "Web search failed"
+                                    }
+                            elif request_type == "context7_resolve":
+                                # Execute context7_resolve tool
+                                result = await execute_tool(
+                                    "context7_resolve",
+                                    {
+                                        "library_name": parameters.get("library_name"),
+                                        "query": parameters.get("query"),
+                                    },
+                                    hass=self.hass,
+                                    config=self.config,
+                                )
+                                if result.success:
+                                    data = {
+                                        "libraries": result.output,
+                                        "title": result.title,
+                                        "metadata": result.metadata,
+                                    }
+                                else:
+                                    data = {
+                                        "error": result.error
+                                        or "Context7 resolve failed"
+                                    }
+                            elif request_type == "context7_docs":
+                                # Execute context7_docs tool
+                                result = await execute_tool(
+                                    "context7_docs",
+                                    {
+                                        "library_id": parameters.get("library_id"),
+                                        "query": parameters.get("query"),
+                                        "topic": parameters.get("topic"),
+                                    },
+                                    hass=self.hass,
+                                    config=self.config,
+                                )
+                                if result.success:
+                                    data = {
+                                        "documentation": result.output,
+                                        "title": result.title,
+                                        "metadata": result.metadata,
+                                    }
+                                else:
+                                    data = {
+                                        "error": result.error or "Context7 docs failed"
                                     }
                             else:
                                 data = {
