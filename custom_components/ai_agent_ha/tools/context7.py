@@ -41,15 +41,30 @@ API_CONFIG = {
 }
 
 
-def _parse_sse_response(response_text: str) -> Optional[str]:
-    """Parse Server-Sent Events response from Context7 MCP.
+def _parse_mcp_response(response_text: str) -> Optional[str]:
+    """Parse MCP response - handles both direct JSON and SSE formats.
+
+    Context7 returns direct JSON, while some MCP endpoints return SSE.
+    This function handles both formats.
 
     Args:
-        response_text: Raw response text
+        response_text: Raw response text (either JSON or SSE format)
 
     Returns:
         Extracted content text, or None if not found
     """
+    # First, try to parse as direct JSON (Context7's format)
+    try:
+        data = json.loads(response_text)
+        result = data.get("result", {})
+        content = result.get("content", [])
+
+        if content and len(content) > 0:
+            return content[0].get("text", "")
+    except json.JSONDecodeError:
+        pass  # Not direct JSON, try SSE format
+
+    # Fallback: try SSE format (data: {...})
     lines = response_text.split("\n")
 
     for line in lines:
@@ -129,8 +144,8 @@ async def _call_mcp_tool(
 
                 response_text = await response.text()
 
-                # Parse SSE response
-                content = _parse_sse_response(response_text)
+                # Parse MCP response (handles both JSON and SSE formats)
+                content = _parse_mcp_response(response_text)
 
                 if content:
                     return ToolResult(
