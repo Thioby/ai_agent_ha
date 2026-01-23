@@ -2,7 +2,30 @@ import {
   LitElement,
   html,
   css,
-} from "https://unpkg.com/lit-element@2.4.0/lit-element.js?module";
+} from "https://unpkg.com/lit@3.1.0/index.js?module";
+import { unsafeHTML } from "https://unpkg.com/lit@3.1.0/directives/unsafe-html.js?module";
+import { marked } from "https://unpkg.com/marked@12.0.0/lib/marked.esm.js";
+import { markedHighlight } from "https://unpkg.com/marked-highlight@2.1.1/src/index.js";
+import hljs from "https://unpkg.com/@highlightjs/cdn-assets@11.9.0/es/highlight.min.js";
+import yaml from "https://unpkg.com/@highlightjs/cdn-assets@11.9.0/es/languages/yaml.min.js";
+import DOMPurify from "https://unpkg.com/dompurify@3.0.8/dist/purify.es.mjs";
+
+hljs.registerLanguage('yaml', yaml);
+
+marked.use(markedHighlight({
+  langPrefix: 'hljs language-',
+  highlight(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value;
+    }
+    return hljs.highlightAuto(code).value;
+  }
+}));
+
+marked.use({
+  gfm: true,
+  breaks: true
+});
 
 const PROVIDERS = {
   openai: "OpenAI",
@@ -151,6 +174,74 @@ class AiAgentHaPanel extends LitElement {
         margin-right: auto;
         border-bottom-left-radius: 4px;
       }
+      .message-content {
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+      }
+      .message-content h1, .message-content h2, .message-content h3,
+      .message-content h4, .message-content h5, .message-content h6 {
+        margin: 0.5em 0 0.3em;
+        line-height: 1.3;
+        color: var(--primary-text-color);
+      }
+      .message-content h1 { font-size: 1.4em; }
+      .message-content h2 { font-size: 1.2em; }
+      .message-content h3 { font-size: 1.1em; }
+      .message-content p { margin: 0.5em 0; }
+      .message-content p:first-child { margin-top: 0; }
+      .message-content p:last-child { margin-bottom: 0; }
+      .message-content ul, .message-content ol {
+        margin: 0.5em 0;
+        padding-left: 1.5em;
+      }
+      .message-content li { margin: 0.25em 0; }
+      .message-content strong { font-weight: 600; }
+      .message-content code {
+        background: rgba(0, 0, 0, 0.06);
+        padding: 0.2em 0.4em;
+        border-radius: 4px;
+        font-family: 'SF Mono', Monaco, Consolas, monospace;
+        font-size: 0.85em;
+      }
+      .message-content pre {
+        background: var(--primary-background-color);
+        border: 1px solid var(--divider-color);
+        padding: 12px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 0.5em 0;
+      }
+      .message-content pre code {
+        background: none;
+        padding: 0;
+        font-size: 0.85em;
+        line-height: 1.5;
+      }
+      .message-content blockquote {
+        border-left: 3px solid var(--primary-color);
+        margin: 0.5em 0;
+        padding-left: 1em;
+        color: var(--secondary-text-color);
+      }
+      .message-content a {
+        color: var(--primary-color);
+        text-decoration: none;
+      }
+      .message-content a:hover {
+        text-decoration: underline;
+      }
+      .message-content hr {
+        border: none;
+        border-top: 1px solid var(--divider-color);
+        margin: 1em 0;
+      }
+      .hljs { background: transparent; }
+      .hljs-keyword { color: #c678dd; }
+      .hljs-string { color: #98c379; }
+      .hljs-attr { color: #d19a66; }
+      .hljs-number { color: #d19a66; }
+      .hljs-literal { color: #56b6c2; }
+      .hljs-comment { color: #5c6370; font-style: italic; }
       .input-container {
         position: relative;
         width: 100%;
@@ -838,10 +929,34 @@ class AiAgentHaPanel extends LitElement {
     this._sidebarOpen = window.innerWidth > 768;
     this._sessionsLoading = true;
     this._unsubscribeEvents = null;
+    this._markdownCache = new Map();
     
     // Bind event handlers for proper cleanup
     this._handleDocumentClick = this._handleDocumentClick.bind(this);
     this._handleWindowResize = this._handleWindowResize.bind(this);
+  }
+  
+  _renderMarkdown(text) {
+    if (!text) return '';
+    if (this._markdownCache.has(text)) {
+      return this._markdownCache.get(text);
+    }
+    try {
+      const rawHtml = marked.parse(text);
+      const sanitized = DOMPurify.sanitize(rawHtml, {
+        ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'ul', 'ol', 'li',
+                       'strong', 'em', 'code', 'pre', 'blockquote', 'a', 'span', 'hr'],
+        ALLOWED_ATTR: ['href', 'target', 'rel', 'class']
+      });
+      if (this._markdownCache.size > 100) {
+        const firstKey = this._markdownCache.keys().next().value;
+        this._markdownCache.delete(firstKey);
+      }
+      this._markdownCache.set(text, sanitized);
+      return sanitized;
+    } catch (e) {
+      return text;
+    }
   }
   
   _handleDocumentClick(e) {
@@ -1168,7 +1283,7 @@ class AiAgentHaPanel extends LitElement {
             ` : ''}
             ${this._messages.map(msg => html`
               <div class="message ${msg.type}-message">
-                ${msg.text}
+                <div class="message-content">${msg.type === 'assistant' ? unsafeHTML(this._renderMarkdown(msg.text)) : msg.text}</div>
                 ${msg.automation ? html`
                   <div class="automation-suggestion">
                     <div class="automation-title">${msg.automation.alias}</div>
@@ -1645,6 +1760,7 @@ class AiAgentHaPanel extends LitElement {
     }
     this._activeSessionId = null;
     this._messages = [];
+    this._markdownCache.clear();
     this._clearLoadingState();
     this._error = null;
     this._pendingAutomation = null;
