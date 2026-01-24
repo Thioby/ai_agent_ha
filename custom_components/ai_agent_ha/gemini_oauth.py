@@ -29,12 +29,8 @@ CLIENT_SECRET = "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"
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
-# Scopes required for Gemini API access
-SCOPES = [
-    "https://www.googleapis.com/auth/cloud-platform",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-]
+# Scopes required for Gemini API access (space-separated string for OAuth)
+SCOPES = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
 
 # Redirect URI for manual code entry flow
 # Using OOB (out-of-band) style redirect for Home Assistant integration
@@ -76,7 +72,7 @@ def build_auth_url(challenge: str, state: str) -> str:
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI_WEB,
         "response_type": "code",
-        "scope": " ".join(SCOPES),  # Scopes must be space-separated string
+        "scope": SCOPES,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
         "state": state,
