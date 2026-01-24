@@ -1147,6 +1147,11 @@ class GeminiOAuthClient(BaseAIClient):
 
     async def get_response(self, messages, **kwargs):
         """Send request to Gemini API using OAuth token."""
+        _LOGGER.info(
+            "GeminiOAuthClient.get_response called. Current oauth_data keys: %s, managed_project_id: %s",
+            list(self._oauth_data.keys()),
+            self._oauth_data.get("managed_project_id", "NOT_SET"),
+        )
         access_token = await self._get_valid_token()
 
         _LOGGER.debug("Making OAuth request to Gemini API with model: %s", self.model)
