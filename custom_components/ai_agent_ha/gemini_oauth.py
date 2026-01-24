@@ -30,20 +30,18 @@ AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 # Scopes required for Gemini API access
-SCOPES = " ".join(
-    [
-        "https://www.googleapis.com/auth/cloud-platform",
-        "https://www.googleapis.com/auth/userinfo.email",
-        "https://www.googleapis.com/auth/userinfo.profile",
-    ]
-)
+SCOPES = [
+    "https://www.googleapis.com/auth/cloud-platform",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+]
 
 # Redirect URI for manual code entry flow
 # Using OOB (out-of-band) style redirect for Home Assistant integration
 REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob"
 
 # Alternative: Use the same redirect as Gemini CLI for web flow
-REDIRECT_URI_WEB = "https://codeassist.google.com/authcode"
+REDIRECT_URI_WEB = "http://localhost:8085/oauth2callback"
 
 
 def generate_pkce() -> tuple[str, str]:

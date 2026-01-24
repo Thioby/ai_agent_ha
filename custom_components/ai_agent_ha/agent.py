@@ -918,8 +918,29 @@ class AnthropicOAuthClient(BaseAIClient):
                 return str(data)
 
 
+# Cloud Code Assist API constants (from opencode-gemini-auth)
+GEMINI_CODE_ASSIST_ENDPOINT = "https://cloudcode-pa.googleapis.com/v1internal"
+
+GEMINI_CODE_ASSIST_HEADERS = {
+    "User-Agent": "google-api-nodejs-client/9.15.1",
+    "X-Goog-Api-Client": "gl-node/22.17.0",
+    "Client-Metadata": "ideType=IDE_UNSPECIFIED,platform=PLATFORM_UNSPECIFIED,pluginType=GEMINI",
+}
+
+GEMINI_CODE_ASSIST_METADATA = {
+    "ideType": "IDE_UNSPECIFIED",
+    "platform": "PLATFORM_UNSPECIFIED",
+    "pluginType": "GEMINI",
+}
+
+
 class GeminiOAuthClient(BaseAIClient):
-    """Gemini client using OAuth authentication (Google account login)."""
+    """Gemini client using OAuth authentication (Google account login).
+
+    Uses Cloud Code Assist API (cloudcode-pa.googleapis.com) which requires
+    a managed project ID. On first use, the client will automatically
+    onboard the user to obtain a project ID for the FREE tier.
+    """
 
     def __init__(self, hass, config_entry, model="gemini-3-pro-preview"):
         import asyncio
@@ -927,9 +948,10 @@ class GeminiOAuthClient(BaseAIClient):
         self.hass = hass
         self.config_entry = config_entry
         self.model = model
-        self.api_url = "https://generativelanguage.googleapis.com/v1beta/models"
+        self.api_url = GEMINI_CODE_ASSIST_ENDPOINT
         self._oauth_data = dict(config_entry.data.get("gemini_oauth", {}))
         self._refresh_lock = asyncio.Lock()
+        self._project_lock = asyncio.Lock()
 
     async def _get_valid_token(self) -> str:
         """Get a valid access token, refreshing if necessary."""
@@ -972,16 +994,152 @@ class GeminiOAuthClient(BaseAIClient):
 
             return new_tokens["access_token"]
 
+    async def _save_project_id(self, project_id: str) -> None:
+        """Persist managed project ID to config entry."""
+        self._oauth_data["managed_project_id"] = project_id
+        new_data = {**self.config_entry.data, "gemini_oauth": self._oauth_data}
+        self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+        _LOGGER.info("Saved Gemini managed project ID: %s", project_id)
+
+    async def _ensure_project_id(
+        self, session: aiohttp.ClientSession, access_token: str
+    ) -> str:
+        """Ensure we have a valid project ID, onboarding if necessary.
+
+        Cloud Code Assist API requires a project ID for all requests.
+        For FREE tier users, Google provides a managed project automatically.
+        This method:
+        1. Returns cached project ID if available
+        2. Calls loadCodeAssist to check for existing project
+        3. Calls onboardUser to create a new managed project (with retry loop)
+
+        Returns:
+            str: The managed project ID
+
+        Raises:
+            Exception: If project ID cannot be obtained
+        """
+        async with self._project_lock:
+            # 1. Check if we have cached project ID
+            project_id = self._oauth_data.get("managed_project_id")
+            if project_id:
+                _LOGGER.debug("Using cached Gemini project ID: %s", project_id)
+                return project_id
+
+            _LOGGER.info("No Gemini project ID cached, resolving...")
+
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+                **GEMINI_CODE_ASSIST_HEADERS,
+            }
+
+            # 2. Try loadCodeAssist to get existing project
+            try:
+                async with session.post(
+                    f"{self.api_url}:loadCodeAssist",
+                    headers=headers,
+                    json={"metadata": GEMINI_CODE_ASSIST_METADATA},
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        project_id = data.get("cloudaicompanionProject")
+                        if project_id:
+                            _LOGGER.info(
+                                "Found existing Gemini project: %s", project_id
+                            )
+                            await self._save_project_id(project_id)
+                            return project_id
+
+                        # Check tier - enterprise users need their own project
+                        current_tier = data.get("currentTier", {}).get("id")
+                        if current_tier and current_tier != "FREE":
+                            raise Exception(
+                                f"Gemini tier '{current_tier}' requires manual project "
+                                "configuration. Set OPENCODE_GEMINI_PROJECT_ID or configure "
+                                "provider.google.options.projectId"
+                            )
+                    else:
+                        error_text = await resp.text()
+                        _LOGGER.warning(
+                            "loadCodeAssist failed (%d): %s",
+                            resp.status,
+                            error_text[:200],
+                        )
+            except aiohttp.ClientError as e:
+                _LOGGER.warning("loadCodeAssist request failed: %s", e)
+
+            # 3. Onboard user for FREE tier (with retry loop)
+            _LOGGER.info("Onboarding new Gemini FREE tier user...")
+
+            max_attempts = 10
+            delay_seconds = 5
+
+            for attempt in range(max_attempts):
+                try:
+                    async with session.post(
+                        f"{self.api_url}:onboardUser",
+                        headers=headers,
+                        json={
+                            "tierId": "FREE",
+                            "metadata": GEMINI_CODE_ASSIST_METADATA,
+                        },
+                        timeout=aiohttp.ClientTimeout(total=30),
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            _LOGGER.debug(
+                                "onboardUser response (attempt %d): %s",
+                                attempt + 1,
+                                json.dumps(data)[:300],
+                            )
+
+                            # Check if onboarding is complete
+                            if data.get("done"):
+                                project_id = (
+                                    data.get("response", {})
+                                    .get("cloudaicompanionProject", {})
+                                    .get("id")
+                                )
+                                if project_id:
+                                    _LOGGER.info(
+                                        "Gemini onboarding complete, project: %s",
+                                        project_id,
+                                    )
+                                    await self._save_project_id(project_id)
+                                    return project_id
+                        else:
+                            error_text = await resp.text()
+                            _LOGGER.warning(
+                                "onboardUser failed (%d): %s",
+                                resp.status,
+                                error_text[:200],
+                            )
+                except aiohttp.ClientError as e:
+                    _LOGGER.warning(
+                        "onboardUser request failed (attempt %d): %s", attempt + 1, e
+                    )
+
+                if attempt < max_attempts - 1:
+                    _LOGGER.debug(
+                        "Onboarding in progress, waiting %ds (attempt %d/%d)...",
+                        delay_seconds,
+                        attempt + 1,
+                        max_attempts,
+                    )
+                    await asyncio.sleep(delay_seconds)
+
+            raise Exception(
+                "Failed to obtain Gemini project ID after onboarding. "
+                "Please try again later or check your Google account permissions."
+            )
+
     async def get_response(self, messages, **kwargs):
         """Send request to Gemini API using OAuth token."""
         access_token = await self._get_valid_token()
 
         _LOGGER.debug("Making OAuth request to Gemini API with model: %s", self.model)
-
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        }
 
         # Convert messages to Gemini format
         gemini_contents = []
@@ -998,7 +1156,8 @@ class GeminiOAuthClient(BaseAIClient):
             elif role == "assistant" and content:
                 gemini_contents.append({"role": "model", "parts": [{"text": content}]})
 
-        payload = {
+        # Internal request payload
+        request_payload = {
             "contents": gemini_contents,
             "generationConfig": {
                 "temperature": 0.7,
@@ -1008,20 +1167,42 @@ class GeminiOAuthClient(BaseAIClient):
 
         # Add system instruction if present
         if system_instruction:
-            payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
-
-        url = f"{self.api_url}/{self.model}:generateContent"
-
-        _LOGGER.debug("Gemini OAuth request URL: %s", url)
-        _LOGGER.debug(
-            "Gemini OAuth request payload: %s", json.dumps(payload, indent=2)[:500]
-        )
+            request_payload["systemInstruction"] = {
+                "parts": [{"text": system_instruction}]
+            }
 
         async with aiohttp.ClientSession() as session:
+            # Ensure we have a valid project ID (will onboard if necessary)
+            project_id = await self._ensure_project_id(session, access_token)
+
+            # Wrap payload as per Cloud Code API expectation
+            wrapped_payload = {
+                "project": project_id,
+                "model": f"models/{self.model}",
+                "request": request_payload,
+            }
+
+            # URL construction: endpoint + :generateContent
+            url = f"{self.api_url}:generateContent"
+
+            # Headers from opencode-gemini-auth
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+                **GEMINI_CODE_ASSIST_HEADERS,
+            }
+
+            _LOGGER.debug("Gemini OAuth request URL: %s", url)
+            _LOGGER.debug(
+                "Gemini OAuth request payload (project=%s, model=%s)",
+                project_id,
+                self.model,
+            )
+
             async with session.post(
                 url,
                 headers=headers,
-                json=payload,
+                json=wrapped_payload,
                 timeout=aiohttp.ClientTimeout(total=300),
             ) as resp:
                 response_text = await resp.text()
@@ -1035,6 +1216,10 @@ class GeminiOAuthClient(BaseAIClient):
                     )
 
                 data = json.loads(response_text)
+
+                # Unwrap response if it contains 'response' key (Cloud Code API behavior)
+                if "response" in data:
+                    data = data["response"]
 
                 # Extract text from Gemini response format
                 candidates = data.get("candidates", [])
