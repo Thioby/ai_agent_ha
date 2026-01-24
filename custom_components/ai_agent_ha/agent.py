@@ -1042,8 +1042,14 @@ class GeminiOAuthClient(BaseAIClient):
                     json={"metadata": GEMINI_CODE_ASSIST_METADATA},
                     timeout=aiohttp.ClientTimeout(total=30),
                 ) as resp:
+                    response_text = await resp.text()
+                    _LOGGER.debug(
+                        "loadCodeAssist response (%d): %s",
+                        resp.status,
+                        response_text[:500],
+                    )
                     if resp.status == 200:
-                        data = await resp.json()
+                        data = json.loads(response_text)
                         project_id = data.get("cloudaicompanionProject")
                         if project_id:
                             _LOGGER.info(
@@ -1060,12 +1066,16 @@ class GeminiOAuthClient(BaseAIClient):
                                 "configuration. Set OPENCODE_GEMINI_PROJECT_ID or configure "
                                 "provider.google.options.projectId"
                             )
+
+                        _LOGGER.info(
+                            "loadCodeAssist returned no project, will try onboarding. Response: %s",
+                            response_text[:300],
+                        )
                     else:
-                        error_text = await resp.text()
                         _LOGGER.warning(
                             "loadCodeAssist failed (%d): %s",
                             resp.status,
-                            error_text[:200],
+                            response_text[:200],
                         )
             except aiohttp.ClientError as e:
                 _LOGGER.warning("loadCodeAssist request failed: %s", e)
@@ -1193,6 +1203,11 @@ class GeminiOAuthClient(BaseAIClient):
             }
 
             _LOGGER.debug("Gemini OAuth request URL: %s", url)
+            _LOGGER.debug(
+                "Gemini OAuth wrapped payload: project=%s, model=%s",
+                project_id,
+                wrapped_payload.get("model"),
+            )
             _LOGGER.debug(
                 "Gemini OAuth request payload (project=%s, model=%s)",
                 project_id,
