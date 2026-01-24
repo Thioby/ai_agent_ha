@@ -76,7 +76,7 @@ def build_auth_url(challenge: str, state: str) -> str:
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI_WEB,
         "response_type": "code",
-        "scope": SCOPES,
+        "scope": " ".join(SCOPES),  # Scopes must be space-separated string
         "code_challenge": challenge,
         "code_challenge_method": "S256",
         "state": state,
