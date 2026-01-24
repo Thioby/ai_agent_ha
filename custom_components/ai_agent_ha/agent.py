@@ -1723,9 +1723,11 @@ class AiAgentHaAgent:
             self.ai_client = AnthropicOAuthClient(hass, config_entry, model)
         elif provider == "gemini_oauth":
             model = models_config.get("gemini_oauth", "gemini-3-pro-preview")
+            _LOGGER.info("Initializing GeminiOAuthClient with model: %s", model)
             if not config_entry:
                 raise Exception("gemini_oauth requires config_entry")
             self.ai_client = GeminiOAuthClient(hass, config_entry, model)
+            _LOGGER.info("GeminiOAuthClient initialized successfully")
         elif provider == "alter":
             model = models_config.get("alter", "")
             self.ai_client = AlterClient(config.get("alter_token"), model)
@@ -3514,17 +3516,23 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                 # Skip the normal provider_config flow
                 provider_settings = {"model": model}
             elif selected_provider == "gemini_oauth":
+                _LOGGER.info("process_query: selected_provider is gemini_oauth")
                 if not self.config_entry:
                     error_msg = "gemini_oauth requires config_entry"
                     _LOGGER.error(error_msg)
                     return {"success": False, "error": error_msg}
 
                 model = models_config.get("gemini_oauth", "gemini-3-pro-preview")
+                _LOGGER.info(
+                    "process_query: Creating GeminiOAuthClient with model: %s", model
+                )
                 try:
                     self.ai_client = GeminiOAuthClient(
                         self.hass, self.config_entry, model
                     )
-                    _LOGGER.debug(f"Initialized gemini_oauth client with model {model}")
+                    _LOGGER.info(
+                        "process_query: GeminiOAuthClient created successfully"
+                    )
                 except Exception as e:
                     error_msg = f"Error initializing gemini_oauth client: {str(e)}"
                     _LOGGER.error(error_msg)
