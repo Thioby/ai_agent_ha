@@ -414,6 +414,23 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
             errors=errors,
         )
 
+    def _extract_oauth_code(self, input_str: str) -> str:
+        """Extract OAuth code from callback URL or return input as-is.
+
+        Accepts either:
+        - Full callback URL: http://localhost:8085/oauth2callback?code=4/0A...&state=...
+        - Just the authorization code: 4/0A...
+        """
+        from urllib.parse import urlparse, parse_qs
+
+        if input_str.startswith("http://") or input_str.startswith("https://"):
+            parsed = urlparse(input_str)
+            params = parse_qs(parsed.query)
+            code_list = params.get("code", [])
+            if code_list:
+                return code_list[0]
+        return input_str
+
     async def async_step_gemini_oauth(self, user_input=None):
         """Show auth URL and prompt user to authorize, then enter code for Gemini OAuth."""
         if (
@@ -440,9 +457,11 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
         errors = {}
 
         if user_input is not None:
-            code = user_input.get("code", "").strip()
+            code_input = user_input.get("code", "").strip()
             selected_model = user_input.get("model", "gemini-3-pro-preview")
-            if code:
+            if code_input:
+                # Extract code from full callback URL or use as-is
+                code = self._extract_oauth_code(code_input)
                 try:
                     async with aiohttp.ClientSession() as session:
                         result = await gemini_oauth.exchange_code(
