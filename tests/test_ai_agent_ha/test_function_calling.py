@@ -227,11 +227,249 @@ class TestToolSchemaConverter:
         assert "location" in params["required"]
 
 
-# Tests for FunctionCallHandler will be added in TODO 3
+# Tests for FunctionCallHandler - TODO 3
 class TestFunctionCallHandler:
     """Test FunctionCallHandler - parses function calls from responses."""
 
-    pass  # Tests will be added in TODO 3
+    # ===== OpenAI Response Parsing =====
+
+    @pytest.fixture
+    def openai_response_with_function_call(self):
+        """OpenAI response containing a function call."""
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "call_abc123",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_weather",
+                                    "arguments": '{"location": "Paris, France"}',
+                                },
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+
+    @pytest.fixture
+    def openai_response_text_only(self):
+        """OpenAI response with text only (no function call)."""
+        return {"choices": [{"message": {"content": "The weather is nice today."}}]}
+
+    @pytest.fixture
+    def openai_response_multiple_calls(self):
+        """OpenAI response with multiple parallel function calls."""
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_weather",
+                                    "arguments": '{"location": "Paris"}',
+                                },
+                            },
+                            {
+                                "id": "call_2",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_weather",
+                                    "arguments": '{"location": "London"}',
+                                },
+                            },
+                        ]
+                    }
+                }
+            ]
+        }
+
+    def test_parse_openai_response_extracts_function_call(
+        self, openai_response_with_function_call
+    ):
+        """Should extract function name and arguments from OpenAI response."""
+        result = FunctionCallHandler.parse_openai_response(
+            openai_response_with_function_call
+        )
+
+        assert result is not None
+        assert len(result) == 1
+        fc = result[0]
+        assert fc.id == "call_abc123"
+        assert fc.name == "get_weather"
+        assert fc.arguments == {"location": "Paris, France"}
+
+    def test_parse_openai_response_returns_none_for_text(
+        self, openai_response_text_only
+    ):
+        """Should return None when no function call present."""
+        result = FunctionCallHandler.parse_openai_response(openai_response_text_only)
+        assert result is None
+
+    def test_parse_openai_response_handles_multiple_calls(
+        self, openai_response_multiple_calls
+    ):
+        """Should parse multiple parallel function calls."""
+        result = FunctionCallHandler.parse_openai_response(
+            openai_response_multiple_calls
+        )
+
+        assert result is not None
+        assert len(result) == 2
+        assert result[0].id == "call_1"
+        assert result[1].id == "call_2"
+
+    def test_is_function_call_openai_true(self, openai_response_with_function_call):
+        """Should detect function call in OpenAI response."""
+        assert (
+            FunctionCallHandler.is_function_call(
+                openai_response_with_function_call, "openai"
+            )
+            is True
+        )
+
+    def test_is_function_call_openai_false(self, openai_response_text_only):
+        """Should return False for text-only OpenAI response."""
+        assert (
+            FunctionCallHandler.is_function_call(openai_response_text_only, "openai")
+            is False
+        )
+
+    # ===== Anthropic Response Parsing =====
+
+    @pytest.fixture
+    def anthropic_response_with_tool_use(self):
+        """Anthropic response containing a tool_use block."""
+        return {
+            "content": [
+                {"type": "text", "text": "Let me check the weather for you."},
+                {
+                    "type": "tool_use",
+                    "id": "toolu_abc123",
+                    "name": "get_weather",
+                    "input": {"location": "Paris, France"},
+                },
+            ]
+        }
+
+    @pytest.fixture
+    def anthropic_response_text_only(self):
+        """Anthropic response with text only."""
+        return {"content": [{"type": "text", "text": "Hello, how can I help?"}]}
+
+    def test_parse_anthropic_response_extracts_tool_use(
+        self, anthropic_response_with_tool_use
+    ):
+        """Should extract tool_use from Anthropic response."""
+        result = FunctionCallHandler.parse_anthropic_response(
+            anthropic_response_with_tool_use
+        )
+
+        assert result is not None
+        assert len(result) == 1
+        fc = result[0]
+        assert fc.id == "toolu_abc123"
+        assert fc.name == "get_weather"
+        assert fc.arguments == {"location": "Paris, France"}
+
+    def test_parse_anthropic_response_returns_none_for_text(
+        self, anthropic_response_text_only
+    ):
+        """Should return None when no tool_use present."""
+        result = FunctionCallHandler.parse_anthropic_response(
+            anthropic_response_text_only
+        )
+        assert result is None
+
+    def test_is_function_call_anthropic_true(self, anthropic_response_with_tool_use):
+        """Should detect tool_use in Anthropic response."""
+        assert (
+            FunctionCallHandler.is_function_call(
+                anthropic_response_with_tool_use, "anthropic"
+            )
+            is True
+        )
+
+    def test_is_function_call_anthropic_false(self, anthropic_response_text_only):
+        """Should return False for text-only Anthropic response."""
+        assert (
+            FunctionCallHandler.is_function_call(
+                anthropic_response_text_only, "anthropic"
+            )
+            is False
+        )
+
+    # ===== Gemini Response Parsing =====
+
+    @pytest.fixture
+    def gemini_response_with_function_call(self):
+        """Gemini response containing a functionCall."""
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "functionCall": {
+                                    "name": "get_weather",
+                                    "args": {"location": "Paris, France"},
+                                }
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+
+    @pytest.fixture
+    def gemini_response_text_only(self):
+        """Gemini response with text only."""
+        return {
+            "candidates": [{"content": {"parts": [{"text": "The weather is sunny."}]}}]
+        }
+
+    def test_parse_gemini_response_extracts_function_call(
+        self, gemini_response_with_function_call
+    ):
+        """Should extract functionCall from Gemini response."""
+        result = FunctionCallHandler.parse_gemini_response(
+            gemini_response_with_function_call
+        )
+
+        assert result is not None
+        assert len(result) == 1
+        fc = result[0]
+        assert fc.name == "get_weather"
+        assert fc.arguments == {"location": "Paris, France"}
+
+    def test_parse_gemini_response_returns_none_for_text(
+        self, gemini_response_text_only
+    ):
+        """Should return None when no functionCall present."""
+        result = FunctionCallHandler.parse_gemini_response(gemini_response_text_only)
+        assert result is None
+
+    def test_is_function_call_gemini_true(self, gemini_response_with_function_call):
+        """Should detect functionCall in Gemini response."""
+        assert (
+            FunctionCallHandler.is_function_call(
+                gemini_response_with_function_call, "gemini"
+            )
+            is True
+        )
+
+    def test_is_function_call_gemini_false(self, gemini_response_text_only):
+        """Should return False for text-only Gemini response."""
+        assert (
+            FunctionCallHandler.is_function_call(gemini_response_text_only, "gemini")
+            is False
+        )
 
 
 # Tests for UnexpectedToolCallHandler will be added in TODO 5
