@@ -3,9 +3,7 @@
 This module provides semantic search capabilities for Home Assistant entities,
 learning from conversations to improve entity categorization over time.
 
-Note: RAG requires chromadb to be installed. If not installed, RAG will be
-disabled gracefully. To enable RAG, install chromadb in your HA environment:
-    pip install chromadb>=0.4.0
+Uses SQLite for vector storage - no external dependencies required.
 """
 
 from __future__ import annotations
@@ -20,19 +18,9 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-# Check if chromadb is available
-CHROMADB_AVAILABLE = False
-try:
-    import chromadb  # noqa: F401
-
-    CHROMADB_AVAILABLE = True
-except ImportError:
-    _LOGGER.debug("chromadb not installed - RAG features will be disabled")
-
-# Re-export for external use (lazy imports)
+# Re-export for external use
 __all__ = [
     "RAGManager",
-    "CHROMADB_AVAILABLE",
 ]
 
 
@@ -40,7 +28,7 @@ __all__ = [
 class RAGManager:
     """Facade for the RAG system.
 
-    Orchestrates all RAG components: ChromaDB storage, embeddings,
+    Orchestrates all RAG components: SQLite storage, embeddings,
     entity indexing, query engine, and semantic learning.
 
     Usage:
@@ -54,7 +42,7 @@ class RAGManager:
     hass: HomeAssistant
     config: dict[str, Any]
     config_entry: ConfigEntry | None = None
-    _store: Any | None = field(default=None, repr=False)  # ChromaStore
+    _store: Any | None = field(default=None, repr=False)  # SqliteStore
     _embedding_provider: Any | None = field(default=None, repr=False)  # EmbeddingProvider
     _indexer: Any | None = field(default=None, repr=False)  # EntityIndexer
     _query_engine: Any | None = field(default=None, repr=False)  # QueryEngine
@@ -63,16 +51,16 @@ class RAGManager:
     _initialized: bool = field(default=False, repr=False)
 
     def _get_persist_directory(self) -> str:
-        """Get the ChromaDB persist directory path."""
-        # Use HA config directory: /config/ai_agent_ha/chroma_db/
-        config_dir = self.hass.config.path("ai_agent_ha", "chroma_db")
+        """Get the SQLite persist directory path."""
+        # Use HA config directory: /config/ai_agent_ha/rag_db/
+        config_dir = self.hass.config.path("ai_agent_ha", "rag_db")
         return config_dir
 
     async def async_initialize(self) -> None:
         """Initialize all RAG components.
 
         This initializes:
-        1. ChromaDB storage
+        1. SQLite vector storage
         2. Embedding provider
         3. Entity indexer (imports lazily to avoid circular imports)
         4. Query engine
@@ -83,25 +71,17 @@ class RAGManager:
             _LOGGER.debug("RAGManager already initialized")
             return
 
-        # Check if chromadb is available
-        if not CHROMADB_AVAILABLE:
-            raise ImportError(
-                "chromadb is not installed. RAG features require chromadb. "
-                "To enable RAG, install it with: pip install chromadb>=0.4.0"
-            )
-
         try:
             _LOGGER.info("Initializing RAG system...")
 
-            # Import ChromaStore lazily (requires chromadb)
-            from .chroma_store import ChromaStore
+            # 1. Initialize SQLite storage
+            from .sqlite_store import SqliteStore
 
-            # 1. Initialize ChromaDB storage
             persist_dir = self._get_persist_directory()
-            self._store = ChromaStore(persist_directory=persist_dir)
+            self._store = SqliteStore(persist_directory=persist_dir)
             await self._store.async_initialize()
 
-            # 2. Initialize embedding provider (lazy import)
+            # 2. Initialize embedding provider
             from .embeddings import create_embedding_provider
 
             self._embedding_provider = create_embedding_provider(
@@ -112,7 +92,7 @@ class RAGManager:
                 self._embedding_provider.provider_name,
             )
 
-            # 3. Initialize entity indexer (lazy import to avoid circular deps)
+            # 3. Initialize entity indexer
             from .entity_indexer import EntityIndexer
 
             self._indexer = EntityIndexer(
