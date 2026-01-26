@@ -4259,10 +4259,12 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             continue
                         elif response_data.get("request_type") == "call_service":
                             # Handle service call request
-                            domain = response_data.get("domain")
-                            service = response_data.get("service")
-                            target = response_data.get("target", {})
-                            service_data = response_data.get("service_data", {})
+                            # Get parameters - try nested first, then top level for backward compatibility
+                            params = response_data.get("parameters", {})
+                            domain = params.get("domain") or response_data.get("domain")
+                            service = params.get("service") or response_data.get("service")
+                            target = params.get("target") or response_data.get("target", {})
+                            service_data = params.get("service_data") or response_data.get("service_data", {})
 
                             # Resolve nested requests in target
                             if target and "entity_id" in target:
