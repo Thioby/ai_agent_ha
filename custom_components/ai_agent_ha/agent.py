@@ -4648,8 +4648,41 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
             "conversation": history_tail,
         }
 
+    def _get_native_function_calling_tools(self) -> List[Any]:
+        """Get tools for native function calling from ToolRegistry.
+
+        Returns:
+            List of Tool instances for providers that support native function calling.
+            Empty list for providers that don't support it.
+        """
+        provider = self.config.get("ai_provider", "")
+        supported_providers = [
+            "openai",
+            "anthropic",
+            "anthropic_oauth",
+            "gemini",
+            "gemini_oauth",
+        ]
+
+        if provider not in supported_providers:
+            return []
+
+        try:
+            tools = ToolRegistry.get_all_tools(
+                hass=self.hass, config=self.config, enabled_only=True
+            )
+            _LOGGER.debug("Retrieved %d tools for native function calling", len(tools))
+            return tools
+        except Exception as e:
+            _LOGGER.warning("Failed to get tools for native function calling: %s", e)
+            return []
+
     async def _get_ai_response(self) -> str:
-        """Get response from the selected AI provider with retries and rate limiting."""
+        """Get response from the selected AI provider with retries and rate limiting.
+
+        Returns:
+            str: Text response from AI, or JSON string for function calls
+        """
         if not self._check_rate_limit():
             raise Exception("Rate limit exceeded. Please try again later.")
         retry_count = 0
@@ -4667,6 +4700,9 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
         _LOGGER.debug("Sending %d messages to AI provider", len(recent_messages))
         _LOGGER.debug("AI provider: %s", self.config.get("ai_provider", "unknown"))
 
+        # Get tools for native function calling (if supported by provider)
+        tools = self._get_native_function_calling_tools()
+
         while retry_count < self._max_retries:
             try:
                 _LOGGER.debug(
@@ -4674,7 +4710,29 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                     retry_count + 1,
                     self._max_retries,
                 )
-                response = await self.ai_client.get_response(recent_messages)
+                response = await self.ai_client.get_response(
+                    recent_messages, tools=tools if tools else None
+                )
+
+                # Handle native function call response (dict with function_calls key)
+                if isinstance(response, dict) and "function_calls" in response:
+                    function_calls = response["function_calls"]
+                    _LOGGER.debug(
+                        "AI client returned %d native function call(s): %s",
+                        len(function_calls),
+                        [fc.name for fc in function_calls],
+                    )
+                    # Convert to JSON format compatible with existing processing
+                    fc = function_calls[0]
+                    json_response = json.dumps(
+                        {
+                            "request_type": fc.name,
+                            "parameters": fc.arguments,
+                        }
+                    )
+                    _LOGGER.debug("Converted function call to JSON: %s", json_response)
+                    return json_response
+
                 _LOGGER.debug(
                     "AI client returned response of length: %d", len(response or "")
                 )
