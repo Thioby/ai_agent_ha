@@ -80,6 +80,47 @@ class ToolSchemaConverter:
     }
 
     @classmethod
+    def _build_parameter_schema(
+        cls, tool: "Tool", type_map: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """Build parameter schema from tool's parameters.
+
+        Args:
+            tool: Tool instance with parameters attribute
+            type_map: Type mapping dictionary for the target provider
+
+        Returns:
+            Parameter schema dictionary with properties and required fields
+        """
+        properties = {}
+        required = []
+
+        for param in tool.parameters:
+            param_type = type_map.get(param.type.lower(), "string")
+            prop = {
+                "type": param_type,
+                "description": param.description,
+            }
+
+            if param.enum:
+                prop["enum"] = param.enum
+
+            properties[param.name] = prop
+
+            if param.required:
+                required.append(param.name)
+
+        schema = {
+            "type": type_map.get("object", "object"),
+            "properties": properties,
+        }
+
+        if required:
+            schema["required"] = required
+
+        return schema
+
+    @classmethod
     def to_openai_format(cls, tools: List["Tool"]) -> List[Dict[str, Any]]:
         """Convert tools to OpenAI function calling format.
 
@@ -88,11 +129,35 @@ class ToolSchemaConverter:
 
         Returns:
             List of OpenAI-formatted tool definitions
+
+        Format:
+            {
+                "type": "function",
+                "function": {
+                    "name": "tool_id",
+                    "description": "tool description",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {...},
+                        "required": [...]
+                    }
+                }
+            }
         """
-        # TODO: Implement in TODO 2
-        raise NotImplementedError(
-            "ToolSchemaConverter.to_openai_format not implemented"
-        )
+        result = []
+        for tool in tools:
+            schema = cls._build_parameter_schema(tool, cls.OPENAI_TYPE_MAP)
+            result.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.id,
+                        "description": tool.description,
+                        "parameters": schema,
+                    },
+                }
+            )
+        return result
 
     @classmethod
     def to_anthropic_format(cls, tools: List["Tool"]) -> List[Dict[str, Any]]:
@@ -103,11 +168,29 @@ class ToolSchemaConverter:
 
         Returns:
             List of Anthropic-formatted tool definitions
+
+        Format:
+            {
+                "name": "tool_id",
+                "description": "tool description",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {...},
+                    "required": [...]
+                }
+            }
         """
-        # TODO: Implement in TODO 2
-        raise NotImplementedError(
-            "ToolSchemaConverter.to_anthropic_format not implemented"
-        )
+        result = []
+        for tool in tools:
+            schema = cls._build_parameter_schema(tool, cls.ANTHROPIC_TYPE_MAP)
+            result.append(
+                {
+                    "name": tool.id,
+                    "description": tool.description,
+                    "input_schema": schema,
+                }
+            )
+        return result
 
     @classmethod
     def to_gemini_format(cls, tools: List["Tool"]) -> List[Dict[str, Any]]:
@@ -118,11 +201,34 @@ class ToolSchemaConverter:
 
         Returns:
             List of Gemini-formatted tool definitions (wrapped in functionDeclarations)
+
+        Format:
+            {
+                "functionDeclarations": [
+                    {
+                        "name": "tool_id",
+                        "description": "tool description",
+                        "parameters": {
+                            "type": "OBJECT",
+                            "properties": {...},
+                            "required": [...]
+                        }
+                    }
+                ]
+            }
         """
-        # TODO: Implement in TODO 2
-        raise NotImplementedError(
-            "ToolSchemaConverter.to_gemini_format not implemented"
-        )
+        function_declarations = []
+        for tool in tools:
+            schema = cls._build_parameter_schema(tool, cls.GEMINI_TYPE_MAP)
+            function_declarations.append(
+                {
+                    "name": tool.id,
+                    "description": tool.description,
+                    "parameters": schema,
+                }
+            )
+
+        return [{"functionDeclarations": function_declarations}]
 
 
 class FunctionCallHandler:
