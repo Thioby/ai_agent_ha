@@ -1191,9 +1191,10 @@ class GeminiOAuthClient(BaseAIClient):
             project_id = await self._ensure_project_id(session, access_token)
 
             # Wrap payload as per Cloud Code API expectation
+            # Note: model name should be WITHOUT "models/" prefix for Cloud Code Assist API
             wrapped_payload = {
                 "project": project_id,
-                "model": f"models/{self.model}",
+                "model": self.model,
                 "request": request_payload,
             }
 
