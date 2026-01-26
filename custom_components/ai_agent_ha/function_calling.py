@@ -251,10 +251,35 @@ class FunctionCallHandler:
         Returns:
             True if response contains a function call
         """
-        # TODO: Implement in TODO 4
-        raise NotImplementedError(
-            "FunctionCallHandler.is_function_call not implemented"
-        )
+        provider_lower = provider.lower()
+
+        if provider_lower == "openai":
+            try:
+                tool_calls = (
+                    response.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("tool_calls")
+                )
+                return tool_calls is not None and len(tool_calls) > 0
+            except (IndexError, AttributeError):
+                return False
+
+        elif provider_lower == "anthropic":
+            content = response.get("content", [])
+            return any(block.get("type") == "tool_use" for block in content)
+
+        elif provider_lower == "gemini":
+            try:
+                parts = (
+                    response.get("candidates", [{}])[0]
+                    .get("content", {})
+                    .get("parts", [])
+                )
+                return any("functionCall" in part for part in parts)
+            except (IndexError, AttributeError):
+                return False
+
+        return False
 
     @classmethod
     def parse_openai_response(
@@ -268,10 +293,32 @@ class FunctionCallHandler:
         Returns:
             List of FunctionCall objects, or None if no function calls
         """
-        # TODO: Implement in TODO 4
-        raise NotImplementedError(
-            "FunctionCallHandler.parse_openai_response not implemented"
-        )
+        try:
+            tool_calls = (
+                response.get("choices", [{}])[0].get("message", {}).get("tool_calls")
+            )
+            if not tool_calls:
+                return None
+
+            result = []
+            for tc in tool_calls:
+                func_data = tc.get("function", {})
+                arguments_str = func_data.get("arguments", "{}")
+                try:
+                    arguments = json.loads(arguments_str)
+                except json.JSONDecodeError:
+                    arguments = {}
+
+                result.append(
+                    FunctionCall(
+                        id=tc.get("id", ""),
+                        name=func_data.get("name", ""),
+                        arguments=arguments,
+                    )
+                )
+            return result
+        except (IndexError, AttributeError, TypeError):
+            return None
 
     @classmethod
     def parse_anthropic_response(
@@ -285,10 +332,24 @@ class FunctionCallHandler:
         Returns:
             List of FunctionCall objects, or None if no function calls
         """
-        # TODO: Implement in TODO 4
-        raise NotImplementedError(
-            "FunctionCallHandler.parse_anthropic_response not implemented"
-        )
+        content = response.get("content", [])
+        tool_use_blocks = [
+            block for block in content if block.get("type") == "tool_use"
+        ]
+
+        if not tool_use_blocks:
+            return None
+
+        result = []
+        for block in tool_use_blocks:
+            result.append(
+                FunctionCall(
+                    id=block.get("id", ""),
+                    name=block.get("name", ""),
+                    arguments=block.get("input", {}),
+                )
+            )
+        return result
 
     @classmethod
     def parse_gemini_response(
@@ -302,10 +363,28 @@ class FunctionCallHandler:
         Returns:
             List of FunctionCall objects, or None if no function calls
         """
-        # TODO: Implement in TODO 4
-        raise NotImplementedError(
-            "FunctionCallHandler.parse_gemini_response not implemented"
-        )
+        try:
+            parts = (
+                response.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+            )
+            function_call_parts = [p for p in parts if "functionCall" in p]
+
+            if not function_call_parts:
+                return None
+
+            result = []
+            for part in function_call_parts:
+                fc = part["functionCall"]
+                result.append(
+                    FunctionCall(
+                        id=f"gemini_{fc.get('name', '')}",
+                        name=fc.get("name", ""),
+                        arguments=fc.get("args", {}),
+                    )
+                )
+            return result
+        except (IndexError, AttributeError, TypeError, KeyError):
+            return None
 
 
 class UnexpectedToolCallHandler:
