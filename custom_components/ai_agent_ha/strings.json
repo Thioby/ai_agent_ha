@@ -32,7 +32,8 @@
                     "anthropic_token": "Anthropic API Key",
                     "alter_token": "Alter API Key",
                     "model": "Model (Optional)",
-                    "custom_model": "Custom Model (Optional)"
+                    "custom_model": "Custom Model (Optional)",
+                    "rag_enabled": "Enable RAG (Semantic Search)"
                 },
                 "data_description": {
                     "llama_token": "Enter your Llama API token",
@@ -42,7 +43,8 @@
                     "anthropic_token": "Enter your Anthropic API key",
                     "alter_token": "Enter your Alter API key",
                     "model": "Choose a predefined model or select 'Custom...' to enter your own",
-                    "custom_model": "Enter a custom model name (only used if 'Custom...' is selected above)"
+                    "custom_model": "Enter a custom model name (only used if 'Custom...' is selected above)",
+                    "rag_enabled": "Enable semantic search for entities. Reduces token usage by providing only relevant context."
                 }
             }
         },
@@ -86,7 +88,8 @@
                     "anthropic_token": "Anthropic API Key",
                     "alter_token": "Alter API Key",
                     "model": "Model",
-                    "custom_model": "Custom Model (Optional)"
+                    "custom_model": "Custom Model (Optional)",
+                    "rag_enabled": "Enable RAG (Semantic Search)"
                 },
                 "data_description": {
                     "llama_token": "Enter your Llama API token",
@@ -96,7 +99,8 @@
                     "anthropic_token": "Enter your Anthropic API key",
                     "alter_token": "Enter your Alter API key",
                     "model": "Choose a model or select 'Custom...' to enter your own",
-                    "custom_model": "Enter a custom model name (only used if 'Custom...' is selected above)"
+                    "custom_model": "Enter a custom model name (only used if 'Custom...' is selected above)",
+                    "rag_enabled": "Enable semantic search for entities. Reduces token usage by providing only relevant context."
                 }
             }
         }

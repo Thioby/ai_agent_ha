@@ -589,6 +589,9 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
         # Get current configuration
         current_models = self.config_entry.data.get("models", {})
         current_model = current_models.get(provider, DEFAULT_MODELS[provider])
+        current_rag_enabled = self.config_entry.data.get(
+            CONF_RAG_ENABLED, DEFAULT_RAG_ENABLED
+        )
         # For Alter provider, if model is empty, default to "Custom..." for the dropdown
         if provider == "alter" and not current_model:
             current_model = "Custom..."
@@ -643,6 +646,11 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
                         f"Options flow - Final model config for {provider}: {updated_data['models'].get(provider)}"
                     )
 
+                    # Update RAG enabled setting
+                    updated_data[CONF_RAG_ENABLED] = user_input.get(
+                        CONF_RAG_ENABLED, current_rag_enabled
+                    )
+
                     # Update the config entry
                     self.hass.config_entries.async_update_entry(
                         self.config_entry, data=updated_data
@@ -675,6 +683,9 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional("custom_model"): TextSelector(
                     TextSelectorConfig(type="text")
                 ),
+                vol.Optional(
+                    CONF_RAG_ENABLED, default=current_rag_enabled
+                ): BooleanSelector(),
             }
 
             return self.async_show_form(
@@ -707,6 +718,9 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
             schema_dict[vol.Optional("custom_model")] = TextSelector(
                 TextSelectorConfig(type="text")
             )
+            schema_dict[
+                vol.Optional(CONF_RAG_ENABLED, default=current_rag_enabled)
+            ] = BooleanSelector()
 
             return self.async_show_form(
                 step_id="configure_options",
@@ -738,6 +752,11 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
             schema_dict[vol.Optional("custom_model")] = TextSelector(
                 TextSelectorConfig(type="text")
             )
+
+        # Add RAG option for all providers
+        schema_dict[
+            vol.Optional(CONF_RAG_ENABLED, default=current_rag_enabled)
+        ] = BooleanSelector()
 
         return self.async_show_form(
             step_id="configure_options",
