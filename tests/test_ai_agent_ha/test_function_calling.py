@@ -472,8 +472,115 @@ class TestFunctionCallHandler:
         )
 
 
-# Tests for UnexpectedToolCallHandler will be added in TODO 5
 class TestUnexpectedToolCallHandler:
     """Test UnexpectedToolCallHandler - handles Gemini's UNEXPECTED_TOOL_CALL."""
 
-    pass  # Tests will be added in TODO 5
+    @pytest.fixture
+    def unexpected_tool_call_response(self):
+        """Gemini response with UNEXPECTED_TOOL_CALL finish reason."""
+        return {
+            "candidates": [
+                {
+                    "content": {"parts": [{"text": ""}]},
+                    "finishReason": "UNEXPECTED_TOOL_CALL",
+                    "finishMessage": "Unexpected tool call: Model tried to call an undeclared function: default:get_climate_related_entities",
+                }
+            ]
+        }
+
+    @pytest.fixture
+    def unexpected_tool_call_no_prefix(self):
+        """UNEXPECTED_TOOL_CALL without default: prefix."""
+        return {
+            "candidates": [
+                {
+                    "content": {"parts": [{"text": ""}]},
+                    "finishReason": "UNEXPECTED_TOOL_CALL",
+                    "finishMessage": "Unexpected tool call: Model tried to call an undeclared function: get_weather",
+                }
+            ]
+        }
+
+    @pytest.fixture
+    def normal_gemini_response(self):
+        """Normal Gemini text response."""
+        return {
+            "candidates": [
+                {
+                    "content": {"parts": [{"text": "The weather is nice."}]},
+                    "finishReason": "STOP",
+                }
+            ]
+        }
+
+    @pytest.fixture
+    def unexpected_tool_call_malformed(self):
+        """UNEXPECTED_TOOL_CALL with malformed finishMessage."""
+        return {
+            "candidates": [
+                {
+                    "content": {"parts": [{"text": ""}]},
+                    "finishReason": "UNEXPECTED_TOOL_CALL",
+                    "finishMessage": "Some unexpected error message format",
+                }
+            ]
+        }
+
+    def test_is_unexpected_tool_call_true(self, unexpected_tool_call_response):
+        """Should detect UNEXPECTED_TOOL_CALL finish reason."""
+        assert (
+            UnexpectedToolCallHandler.is_unexpected_tool_call(
+                unexpected_tool_call_response
+            )
+            is True
+        )
+
+    def test_is_unexpected_tool_call_false_normal_response(
+        self, normal_gemini_response
+    ):
+        """Should return False for normal STOP response."""
+        assert (
+            UnexpectedToolCallHandler.is_unexpected_tool_call(normal_gemini_response)
+            is False
+        )
+
+    def test_extract_function_call_with_default_prefix(
+        self, unexpected_tool_call_response
+    ):
+        """Should extract function name, stripping default: prefix."""
+        result = UnexpectedToolCallHandler.extract_function_call(
+            unexpected_tool_call_response
+        )
+
+        assert result is not None
+        assert result.name == "get_climate_related_entities"
+        assert result.arguments == {}
+
+    def test_extract_function_call_without_prefix(self, unexpected_tool_call_no_prefix):
+        """Should extract function name when no default: prefix."""
+        result = UnexpectedToolCallHandler.extract_function_call(
+            unexpected_tool_call_no_prefix
+        )
+
+        assert result is not None
+        assert result.name == "get_weather"
+
+    def test_extract_function_call_malformed_returns_none(
+        self, unexpected_tool_call_malformed
+    ):
+        """Should return None when finishMessage doesn't match expected pattern."""
+        result = UnexpectedToolCallHandler.extract_function_call(
+            unexpected_tool_call_malformed
+        )
+
+        assert result is None
+
+    def test_extract_function_call_generates_id(self, unexpected_tool_call_response):
+        """Should generate an ID for the function call."""
+        result = UnexpectedToolCallHandler.extract_function_call(
+            unexpected_tool_call_response
+        )
+
+        assert result is not None
+        assert result.id is not None
+        assert len(result.id) > 0
