@@ -906,6 +906,60 @@ class AiAgentHaPanel extends LitElement {
         .menu-toggle {
           display: flex;
         }
+
+        /* Issue 1: Header overlap fix - hide robot icon on mobile */
+        .header > ha-icon {
+          display: none;
+        }
+
+        /* Issue 2: Sidebar visibility - container overflow */
+        .main-container {
+          overflow: hidden;
+        }
+
+        /* Issue 3: New Chat button - icon only */
+        .new-chat-btn {
+          width: 44px;
+          height: 44px;
+          min-width: 44px;
+          min-height: 44px;
+          padding: 0;
+          font-size: 0;
+          gap: 0;
+        }
+        .new-chat-btn ha-icon {
+          --mdc-icon-size: 24px;
+        }
+
+        /* Issue 4: Input footer - compact layout */
+        .input-container {
+          padding: 12px;
+          padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        }
+        .input-footer {
+          gap: 8px;
+        }
+        .provider-selector {
+          flex-shrink: 0;
+        }
+        .provider-label {
+          display: none;
+        }
+        .provider-button {
+          width: 44px;
+          min-width: 44px;
+          height: 44px;
+          padding: 4px;
+          font-size: 0;
+          border-radius: 50%;
+        }
+        .thinking-toggle {
+          display: none;
+        }
+        .send-button {
+          min-width: 44px;
+          --mdc-button-height: 44px;
+        }
       }
     `;
   }
