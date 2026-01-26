@@ -412,10 +412,14 @@ class UnexpectedToolCallHandler:
         Returns:
             True if finishReason is UNEXPECTED_TOOL_CALL
         """
-        # TODO: Implement in TODO 6
-        raise NotImplementedError(
-            "UnexpectedToolCallHandler.is_unexpected_tool_call not implemented"
-        )
+        try:
+            candidates = response.get("candidates", [])
+            if not candidates:
+                return False
+            finish_reason = candidates[0].get("finishReason", "")
+            return finish_reason == "UNEXPECTED_TOOL_CALL"
+        except (IndexError, AttributeError, TypeError):
+            return False
 
     @classmethod
     def extract_function_call(cls, response: Dict[str, Any]) -> Optional[FunctionCall]:
@@ -427,7 +431,22 @@ class UnexpectedToolCallHandler:
         Returns:
             FunctionCall with extracted name, or None if extraction fails
         """
-        # TODO: Implement in TODO 6
-        raise NotImplementedError(
-            "UnexpectedToolCallHandler.extract_function_call not implemented"
-        )
+        try:
+            candidates = response.get("candidates", [])
+            if not candidates:
+                return None
+
+            finish_message = candidates[0].get("finishMessage", "")
+            match = cls.FUNCTION_NAME_PATTERN.search(finish_message)
+
+            if not match:
+                return None
+
+            function_name = match.group(1)
+            return FunctionCall(
+                id=f"unexpected_{function_name}",
+                name=function_name,
+                arguments={},
+            )
+        except (IndexError, AttributeError, TypeError):
+            return None
