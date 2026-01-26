@@ -1958,6 +1958,9 @@ class AiAgentHaAgent:
         Returns:
             List of entity state dictionaries that match the device_class
         """
+        if not device_class:
+            return [{"error": "device_class is required (e.g., 'temperature', 'humidity', 'motion')"}]
+
         try:
             _LOGGER.debug(
                 "Requesting all entities with device_class: %s (domain: %s)",
@@ -2047,6 +2050,9 @@ class AiAgentHaAgent:
 
     async def get_entities_by_area(self, area_id: str) -> List[Dict[str, Any]]:
         """Get all entities for a specific area."""
+        if not area_id:
+            return [{"error": "area_id is required. Use get_area_registry to see available areas."}]
+
         try:
             _LOGGER.debug("Requesting all entities for area: %s", area_id)
 
@@ -2546,6 +2552,9 @@ class AiAgentHaAgent:
 
     async def get_history(self, entity_id: str, hours: int = 24) -> List[Dict]:
         """Get historical state changes for an entity"""
+        if not entity_id:
+            return [{"error": "entity_id is required"}]
+
         _LOGGER.debug("Requesting historical state changes for entity: %s", entity_id)
         try:
             from homeassistant.components.recorder.history import get_significant_states
@@ -2637,6 +2646,9 @@ class AiAgentHaAgent:
 
     async def get_statistics(self, entity_id: str) -> Dict:
         """Get statistics for an entity"""
+        if not entity_id:
+            return {"error": "entity_id is required"}
+
         _LOGGER.debug("Requesting statistics for entity: %s", entity_id)
         try:
             from homeassistant.components import recorder
@@ -4714,6 +4726,12 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
         self, entity_id: str, state: str, attributes: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Set the state of an entity."""
+        # Validate required parameters
+        if not entity_id:
+            return {"error": "entity_id is required"}
+        if not state:
+            return {"error": "state is required (e.g., 'on', 'off')"}
+
         try:
             _LOGGER.debug(
                 "Setting state for entity %s to %s with attributes: %s",
@@ -4806,6 +4824,12 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
         service_data: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Call a Home Assistant service."""
+        # Validate required parameters
+        if not domain:
+            return {"error": "domain is required (e.g., 'light', 'switch', 'cover')"}
+        if not service:
+            return {"error": "service is required (e.g., 'turn_on', 'turn_off', 'toggle')"}
+
         try:
             _LOGGER.debug(
                 "Calling service %s.%s with target: %s and data: %s",
