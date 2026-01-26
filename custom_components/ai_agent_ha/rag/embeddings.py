@@ -303,9 +303,11 @@ def create_embedding_provider(
     """Create an embedding provider based on available configuration.
 
     Fallback chain:
-    1. Gemini OAuth (if configured) - uses same token as Gemini OAuth client
-    2. OpenAI (if configured) - text-embedding-3-small
-    3. Gemini API key (if configured) - text-embedding-004
+    1. OpenAI (if configured) - text-embedding-3-small (most reliable)
+    2. Gemini API key (if configured) - text-embedding-004
+
+    Note: Gemini OAuth tokens from Code Assist do NOT have scopes for
+    the embeddings API (generativelanguage.googleapis.com), so we skip it.
 
     Args:
         hass: Home Assistant instance.
@@ -318,32 +320,21 @@ def create_embedding_provider(
     Raises:
         EmbeddingError: If no embedding provider could be configured.
     """
-    provider = config.get("ai_provider", "")
-
-    # 1. Try Gemini OAuth (if this is the configured provider)
-    if provider == "gemini_oauth" and config_entry:
-        _LOGGER.info("Using Gemini OAuth for embeddings")
-        return GeminiOAuthEmbeddings(hass=hass, config_entry=config_entry)
-
-    # 2. Try OpenAI API key
+    # 1. Try OpenAI API key (most reliable for embeddings)
     openai_token = config.get("openai_token")
     if openai_token and openai_token.startswith("sk-"):
         _LOGGER.info("Using OpenAI for embeddings")
         return OpenAIEmbeddings(api_key=openai_token)
 
-    # 3. Try Gemini API key
+    # 2. Try Gemini API key
     gemini_token = config.get("gemini_token")
     if gemini_token:
         _LOGGER.info("Using Gemini API key for embeddings")
         return GeminiApiKeyEmbeddings(api_key=gemini_token)
 
-    # 4. Check if we have Gemini OAuth tokens in config_entry even if not primary provider
-    if config_entry and "access_token" in config_entry.data:
-        _LOGGER.info("Using Gemini OAuth for embeddings (from config entry)")
-        return GeminiOAuthEmbeddings(hass=hass, config_entry=config_entry)
-
     raise EmbeddingError(
-        "No embedding provider available. Configure Gemini OAuth, OpenAI, or Gemini API key."
+        "No embedding provider available. Configure OpenAI API key or Gemini API key. "
+        "Note: Gemini OAuth (Code Assist) tokens don't support embeddings API."
     )
 
 
