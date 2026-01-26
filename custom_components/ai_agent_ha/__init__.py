@@ -428,10 +428,10 @@ async def _initialize_rag(
         for agent in hass.data[DOMAIN]["agents"].values():
             agent.set_rag_manager(rag_manager)
 
-        stats = rag_manager.get_stats()
+        stats = await rag_manager.get_stats()
         _LOGGER.info(
             "RAG system initialized with %d entities indexed",
-            stats.get("entity_count", 0),
+            stats.get("indexed_entities", 0),
         )
 
     except ImportError as err:

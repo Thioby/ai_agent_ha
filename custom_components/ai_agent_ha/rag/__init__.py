@@ -2,12 +2,15 @@
 
 This module provides semantic search capabilities for Home Assistant entities,
 learning from conversations to improve entity categorization over time.
+
+Note: RAG requires chromadb to be installed. If not installed, RAG will be
+disabled gracefully. To enable RAG, install chromadb in your HA environment:
+    pip install chromadb>=0.4.0
 """
 
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -15,25 +18,21 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
-from .chroma_store import ChromaStore, SearchResult
-from .embeddings import (
-    EmbeddingError,
-    EmbeddingProvider,
-    create_embedding_provider,
-    get_embedding_for_query,
-)
-
 _LOGGER = logging.getLogger(__name__)
 
-# Re-export for external use
+# Check if chromadb is available
+CHROMADB_AVAILABLE = False
+try:
+    import chromadb  # noqa: F401
+
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    _LOGGER.debug("chromadb not installed - RAG features will be disabled")
+
+# Re-export for external use (lazy imports)
 __all__ = [
     "RAGManager",
-    "ChromaStore",
-    "SearchResult",
-    "EmbeddingProvider",
-    "EmbeddingError",
-    "create_embedding_provider",
-    "get_embedding_for_query",
+    "CHROMADB_AVAILABLE",
 ]
 
 
@@ -55,8 +54,8 @@ class RAGManager:
     hass: HomeAssistant
     config: dict[str, Any]
     config_entry: ConfigEntry | None = None
-    _store: ChromaStore | None = field(default=None, repr=False)
-    _embedding_provider: EmbeddingProvider | None = field(default=None, repr=False)
+    _store: Any | None = field(default=None, repr=False)  # ChromaStore
+    _embedding_provider: Any | None = field(default=None, repr=False)  # EmbeddingProvider
     _indexer: Any | None = field(default=None, repr=False)  # EntityIndexer
     _query_engine: Any | None = field(default=None, repr=False)  # QueryEngine
     _learner: Any | None = field(default=None, repr=False)  # SemanticLearner
@@ -84,15 +83,27 @@ class RAGManager:
             _LOGGER.debug("RAGManager already initialized")
             return
 
+        # Check if chromadb is available
+        if not CHROMADB_AVAILABLE:
+            raise ImportError(
+                "chromadb is not installed. RAG features require chromadb. "
+                "To enable RAG, install it with: pip install chromadb>=0.4.0"
+            )
+
         try:
             _LOGGER.info("Initializing RAG system...")
+
+            # Import ChromaStore lazily (requires chromadb)
+            from .chroma_store import ChromaStore
 
             # 1. Initialize ChromaDB storage
             persist_dir = self._get_persist_directory()
             self._store = ChromaStore(persist_directory=persist_dir)
             await self._store.async_initialize()
 
-            # 2. Initialize embedding provider
+            # 2. Initialize embedding provider (lazy import)
+            from .embeddings import create_embedding_provider
+
             self._embedding_provider = create_embedding_provider(
                 self.hass, self.config, self.config_entry
             )
@@ -151,9 +162,6 @@ class RAGManager:
             self._initialized = True
             _LOGGER.info("RAG system initialized successfully")
 
-        except EmbeddingError as e:
-            _LOGGER.error("Failed to initialize embedding provider: %s", e)
-            raise
         except Exception as e:
             _LOGGER.exception("Failed to initialize RAG system: %s", e)
             raise
