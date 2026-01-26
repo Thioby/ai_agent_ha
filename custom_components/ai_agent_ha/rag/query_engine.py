@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from .chroma_store import ChromaStore, SearchResult
+from .sqlite_store import SqliteStore, SearchResult
 from .embeddings import EmbeddingProvider, get_embedding_for_query
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class QueryEngine:
     string suitable for injection into the LLM prompt.
     """
 
-    store: ChromaStore
+    store: SqliteStore
     embedding_provider: EmbeddingProvider
 
     async def search_entities(
@@ -67,6 +67,14 @@ class QueryEngine:
             _LOGGER.debug(
                 "Search for '%s' returned %d results", query[:50], len(results)
             )
+            if results:
+                # Log found entity IDs for debugging
+                entity_ids = [r.id for r in results[:5]]  # First 5
+                _LOGGER.info(
+                    "RAG search found entities: %s%s",
+                    entity_ids,
+                    f" (+{len(results)-5} more)" if len(results) > 5 else "",
+                )
             return results
 
         except Exception as e:

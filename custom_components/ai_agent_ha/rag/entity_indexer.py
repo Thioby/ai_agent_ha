@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_registry import EntityRegistry
 
-from .chroma_store import ChromaStore
+from .sqlite_store import SqliteStore
 from .embeddings import EmbeddingProvider
 
 _LOGGER = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class EntityIndexer:
     """
 
     hass: HomeAssistant
-    store: ChromaStore
+    store: SqliteStore
     embedding_provider: EmbeddingProvider
     _learned_categories: dict[str, str] = field(default_factory=dict)
 

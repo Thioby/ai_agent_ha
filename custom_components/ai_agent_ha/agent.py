@@ -3653,6 +3653,10 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             "Added RAG context with %d chars",
                             len(rag_context),
                         )
+                        _LOGGER.info(
+                            "RAG context for LLM:\n%s",
+                            rag_context[:1000] + "..." if len(rag_context) > 1000 else rag_context,
+                        )
                 except Exception as e:
                     _LOGGER.warning("Failed to get RAG context: %s", e)
 
