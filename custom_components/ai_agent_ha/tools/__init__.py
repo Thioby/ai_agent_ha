@@ -61,6 +61,7 @@ from .base import (
 from . import webfetch
 from . import websearch
 from . import context7
+from . import ha_native
 
 __all__ = [
     # Base classes
@@ -74,6 +75,7 @@ __all__ = [
     "webfetch",
     "websearch",
     "context7",
+    "ha_native",
 ]
 
 

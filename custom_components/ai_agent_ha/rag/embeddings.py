@@ -86,27 +86,29 @@ class GeminiOAuthEmbeddings(EmbeddingProvider):
         import time
         from ..gemini_oauth import refresh_token
 
-        data = dict(self.config_entry.data)
+        # OAuth tokens are stored in the nested "gemini_oauth" dict
+        oauth_data = dict(self.config_entry.data.get("gemini_oauth", {}))
 
         # Check if token is expired or about to expire (within 5 minutes)
-        expires_at = data.get("expires_at", 0)
+        expires_at = oauth_data.get("expires_at", 0)
         if time.time() >= expires_at - 300:
             _LOGGER.debug("Gemini OAuth token expired or expiring, refreshing...")
-            refresh = data.get("refresh_token")
+            refresh = oauth_data.get("refresh_token")
             if not refresh:
                 raise EmbeddingError("No refresh token available for Gemini OAuth")
 
             async with aiohttp.ClientSession() as session:
                 new_tokens = await refresh_token(session, refresh)
 
-            # Update config entry with new tokens
+            # Update oauth_data and persist to config entry
+            oauth_data.update(new_tokens)
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
-                data={**data, **new_tokens},
+                data={**self.config_entry.data, "gemini_oauth": oauth_data},
             )
             return new_tokens["access_token"]
 
-        return data["access_token"]
+        return oauth_data["access_token"]
 
     async def get_embeddings(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings using Gemini OAuth."""

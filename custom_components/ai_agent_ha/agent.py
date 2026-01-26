@@ -1795,6 +1795,9 @@ class AiAgentHaAgent:
     async def get_entity_state(self, entity_id: str) -> Dict[str, Any]:
         """Get the state of a specific entity."""
         try:
+            if not entity_id:
+                return {"error": "Entity ID is required"}
+
             _LOGGER.debug("Requesting entity state for: %s", entity_id)
             state = self.hass.states.get(entity_id)
             if not state:
@@ -1929,6 +1932,8 @@ class AiAgentHaAgent:
     async def get_entities_by_domain(self, domain: str) -> List[Dict[str, Any]]:
         """Get all entities for a specific domain."""
         try:
+            if not domain:
+                return [{"error": "domain is required. Use get_entity_registry_summary to see available domains."}]
             _LOGGER.debug("Requesting all entities for domain: %s", domain)
             states = [
                 state
