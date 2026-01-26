@@ -1643,6 +1643,8 @@ class AiAgentHaAgent:
         self._request_window_start = time.time()
         # Retry tracker for self-healing error recovery (per tool call)
         self._tool_retry_trackers: Dict[str, RetryTracker] = {}
+        # RAG manager for semantic search (optional, set via set_rag_manager)
+        self._rag_manager = None
 
         provider = config.get("ai_provider", "openai")
         models_config = config.get("models", {})
@@ -1706,6 +1708,15 @@ class AiAgentHaAgent:
             provider,
             model,
         )
+
+    def set_rag_manager(self, rag_manager) -> None:
+        """Set the RAG manager for semantic search capabilities.
+
+        Args:
+            rag_manager: The RAGManager instance to use for semantic search.
+        """
+        self._rag_manager = rag_manager
+        _LOGGER.debug("RAG manager connected to agent")
 
     def _validate_api_key(self) -> bool:
         """Validate the API key format."""
@@ -3618,6 +3629,28 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                 )
                 _LOGGER.debug("Added user query to conversation history")
 
+            # Inject RAG context if available (before LLM processing)
+            rag_context = None
+            if self._rag_manager:
+                try:
+                    rag_context = await self._rag_manager.get_relevant_context(
+                        user_query
+                    )
+                    if rag_context:
+                        # Add RAG context as a system message before the user query
+                        rag_message = {
+                            "role": "system",
+                            "content": f"[Smart Home Context]\n{rag_context}",
+                        }
+                        # Insert before the last message (user query)
+                        self.conversation_history.insert(-1, rag_message)
+                        _LOGGER.debug(
+                            "Added RAG context with %d chars",
+                            len(rag_context),
+                        )
+                except Exception as e:
+                    _LOGGER.warning("Failed to get RAG context: %s", e)
+
             max_iterations = (
                 10  # Prevent infinite loops (increased for pagination workflow)
             )
@@ -4088,9 +4121,22 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                 "Received final response: %s",
                                 response_data.get("response"),
                             )
+
+                            # Learn from conversation (detect category corrections)
+                            assistant_response = response_data.get("response", "")
+                            if self._rag_manager and assistant_response:
+                                try:
+                                    await self._rag_manager.learn_from_conversation(
+                                        user_query, assistant_response
+                                    )
+                                except Exception as e:
+                                    _LOGGER.warning(
+                                        "Failed to learn from conversation: %s", e
+                                    )
+
                             result = {
                                 "success": True,
-                                "answer": response_data.get("response", ""),
+                                "answer": assistant_response,
                             }
                             result = _with_debug(result)
                             self._set_cached_data(cache_key, result)

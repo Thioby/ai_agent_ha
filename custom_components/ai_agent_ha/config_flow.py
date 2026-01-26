@@ -9,6 +9,7 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     SelectSelector,
     SelectSelectorConfig,
     TextSelector,
@@ -17,7 +18,13 @@ from homeassistant.helpers.selector import (
 
 import aiohttp
 
-from .const import CONF_LOCAL_MODEL, CONF_LOCAL_URL, DOMAIN
+from .const import (
+    CONF_LOCAL_MODEL,
+    CONF_LOCAL_URL,
+    CONF_RAG_ENABLED,
+    DEFAULT_RAG_ENABLED,
+    DOMAIN,
+)
 from .oauth import generate_pkce, build_auth_url, exchange_code
 from . import gemini_oauth
 
@@ -262,6 +269,11 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
                         # Fallback to default model for other providers
                         self.config_data["models"][provider] = default_model
 
+                # Store RAG enabled setting
+                self.config_data[CONF_RAG_ENABLED] = user_input.get(
+                    CONF_RAG_ENABLED, DEFAULT_RAG_ENABLED
+                )
+
                 return self.async_create_entry(
                     title=f"AI Agent HA ({PROVIDERS[provider]})",
                     data=self.config_data,
@@ -293,6 +305,9 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
                 vol.Optional("custom_model"): TextSelector(
                     TextSelectorConfig(type="text")
                 ),
+                vol.Optional(
+                    CONF_RAG_ENABLED, default=DEFAULT_RAG_ENABLED
+                ): BooleanSelector(),
             }
 
             return self.async_show_form(
@@ -320,6 +335,9 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
             )
             schema_dict[vol.Optional("custom_model")] = TextSelector(
                 TextSelectorConfig(type="text")
+            )
+            schema_dict[vol.Optional(CONF_RAG_ENABLED, default=DEFAULT_RAG_ENABLED)] = (
+                BooleanSelector()
             )
 
             return self.async_show_form(
@@ -352,6 +370,11 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
             schema_dict[vol.Optional("custom_model")] = TextSelector(
                 TextSelectorConfig(type="text")
             )
+
+        # Add RAG option for all providers
+        schema_dict[vol.Optional(CONF_RAG_ENABLED, default=DEFAULT_RAG_ENABLED)] = (
+            BooleanSelector()
+        )
 
         return self.async_show_form(
             step_id="configure",

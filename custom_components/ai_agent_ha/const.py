@@ -45,3 +45,7 @@ ANTHROPIC_OAUTH_PROVIDER = "anthropic_oauth"
 # Gemini OAuth
 CONF_GEMINI_OAUTH = "gemini_oauth"
 GEMINI_OAUTH_PROVIDER = "gemini_oauth"
+
+# RAG (Retrieval-Augmented Generation) configuration
+CONF_RAG_ENABLED = "rag_enabled"
+DEFAULT_RAG_ENABLED = False  # Disabled by default for safety

@@ -14,7 +14,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .agent import AiAgentHaAgent
-from .const import DOMAIN
+from .const import CONF_RAG_ENABLED, DEFAULT_RAG_ENABLED, DOMAIN
 from .websocket_api import async_register_websocket_commands
 
 _LOGGER = logging.getLogger(__name__)
@@ -125,6 +125,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.data[DOMAIN]["agents"][provider] = AiAgentHaAgent(hass, config_data)
 
         _LOGGER.info("Successfully set up AI Agent HA for provider: %s", provider)
+
+        # Initialize RAG system if enabled
+        rag_enabled = config_data.get(CONF_RAG_ENABLED, DEFAULT_RAG_ENABLED)
+        if rag_enabled:
+            await _initialize_rag(hass, config_data, entry)
 
     except KeyError as err:
         _LOGGER.error("Missing required configuration key: %s", err)
@@ -402,8 +407,68 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
+async def _initialize_rag(
+    hass: HomeAssistant, config_data: dict, entry: ConfigEntry
+) -> None:
+    """Initialize the RAG system with graceful degradation.
+
+    If RAG initialization fails, the integration continues to work
+    without RAG functionality (logs a warning).
+    """
+    try:
+        from .rag import RAGManager
+
+        rag_manager = RAGManager(hass, config_data, entry)
+        await rag_manager.async_initialize()
+
+        # Store RAG manager in hass.data
+        hass.data[DOMAIN]["rag_manager"] = rag_manager
+
+        # Connect RAG manager to agents
+        for agent in hass.data[DOMAIN]["agents"].values():
+            agent.set_rag_manager(rag_manager)
+
+        stats = rag_manager.get_stats()
+        _LOGGER.info(
+            "RAG system initialized with %d entities indexed",
+            stats.get("entity_count", 0),
+        )
+
+    except ImportError as err:
+        _LOGGER.warning(
+            "RAG system unavailable (missing dependencies: %s). "
+            "Agent will work without semantic search.",
+            err,
+        )
+    except Exception as err:
+        _LOGGER.warning(
+            "RAG system initialization failed: %s. "
+            "Agent will work without semantic search.",
+            err,
+        )
+
+
+async def _shutdown_rag(hass: HomeAssistant) -> None:
+    """Shutdown the RAG system gracefully."""
+    if DOMAIN not in hass.data:
+        return
+
+    rag_manager = hass.data[DOMAIN].get("rag_manager")
+    if rag_manager:
+        try:
+            await rag_manager.async_shutdown()
+            _LOGGER.debug("RAG system shut down successfully")
+        except Exception as err:
+            _LOGGER.warning("Error shutting down RAG system: %s", err)
+        finally:
+            hass.data[DOMAIN].pop("rag_manager", None)
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    # Shutdown RAG system first
+    await _shutdown_rag(hass)
+
     if await _panel_exists(hass, "ai_agent_ha"):
         try:
             from homeassistant.components.frontend import async_remove_panel
