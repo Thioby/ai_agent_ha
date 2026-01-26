@@ -45,6 +45,12 @@ from .error_handler import (
     RetryTracker,
     format_error_for_llm,
 )
+from .function_calling import (
+    FunctionCall,
+    FunctionCallHandler,
+    ToolSchemaConverter,
+    UnexpectedToolCallHandler,
+)
 from .tools import ToolRegistry, get_tools_system_prompt, execute_tool
 
 _LOGGER = logging.getLogger(__name__)
@@ -534,6 +540,13 @@ class OpenAIClient(BaseAIClient):
         if not is_restricted:
             payload.update({"temperature": 0.7, "top_p": 0.9})
 
+        # Add tools for native function calling if provided
+        tools = kwargs.get("tools")
+        if tools:
+            openai_tools = ToolSchemaConverter.to_openai_format(tools)
+            payload["tools"] = openai_tools
+            _LOGGER.debug("Added %d tools to OpenAI request", len(openai_tools))
+
         _LOGGER.debug("OpenAI request payload: %s", json.dumps(payload, indent=2))
 
         async with aiohttp.ClientSession() as session:
@@ -558,6 +571,17 @@ class OpenAIClient(BaseAIClient):
                     raise Exception(
                         f"Invalid JSON response from OpenAI: {response_text[:200]}"
                     )
+
+                # Check for function calls first (native function calling)
+                if FunctionCallHandler.is_function_call(data, "openai"):
+                    function_calls = FunctionCallHandler.parse_openai_response(data)
+                    if function_calls:
+                        _LOGGER.debug(
+                            "OpenAI returned %d function call(s): %s",
+                            len(function_calls),
+                            [fc.name for fc in function_calls],
+                        )
+                        return {"function_calls": function_calls, "raw_response": data}
 
                 # Extract text from OpenAI response
                 choices = data.get("choices", [])
@@ -595,7 +619,6 @@ class GeminiClient(BaseAIClient):
         headers = {"Content-Type": "application/json"}
 
         # Convert OpenAI-style messages to Gemini format
-        # Extract system message for native systemInstruction (more authoritative than user message)
         gemini_contents = []
         system_instruction_text = None
 
@@ -604,12 +627,9 @@ class GeminiClient(BaseAIClient):
             content = message.get("content", "")
 
             if role == "system":
-                # Use native systemInstruction instead of prepending to user message
-                # This makes the instruction more authoritative for Gemini
                 if system_instruction_text is None:
                     system_instruction_text = content
                 else:
-                    # Append additional system messages
                     system_instruction_text += "\n\n" + content
             elif role == "user":
                 gemini_contents.append({"role": "user", "parts": [{"text": content}]})
@@ -621,15 +641,26 @@ class GeminiClient(BaseAIClient):
             "generationConfig": {
                 "temperature": 0.7,
                 "topP": 0.9,
-                # maxOutputTokens omitted - let Gemini use model's maximum capacity
             },
         }
 
-        # Add system instruction if present (native Gemini API support)
+        # Add system instruction if present
         if system_instruction_text:
             payload["systemInstruction"] = {
                 "parts": [{"text": system_instruction_text}]
             }
+
+        # Add tools for native function calling if provided
+        tools = kwargs.get("tools")
+        if tools:
+            gemini_tools = ToolSchemaConverter.to_gemini_format(tools)
+            payload["tools"] = gemini_tools
+            _LOGGER.debug(
+                "Added %d tools to Gemini request",
+                len(gemini_tools[0].get("functionDeclarations", []))
+                if gemini_tools
+                else 0,
+            )
 
         # Add API key as query parameter (URL encoded)
         url_with_key = f"{self.api_url}?key={quote(self.token)}"
@@ -659,7 +690,7 @@ class GeminiClient(BaseAIClient):
                         f"Invalid JSON response from Gemini: {response_text[:200]}"
                     )
 
-                # Log token usage for debugging, especially for Gemini 2.5 extended thinking
+                # Log token usage for debugging
                 usage_metadata = data.get("usageMetadata", {})
                 if usage_metadata:
                     _LOGGER.debug(
@@ -669,10 +700,33 @@ class GeminiClient(BaseAIClient):
                         usage_metadata.get("thoughtsTokenCount", 0),
                     )
 
+                # Handle UNEXPECTED_TOOL_CALL (Gemini tried to call undeclared function)
+                if UnexpectedToolCallHandler.is_unexpected_tool_call(data):
+                    _LOGGER.warning("Gemini returned UNEXPECTED_TOOL_CALL")
+                    function_call = UnexpectedToolCallHandler.extract_function_call(
+                        data
+                    )
+                    if function_call:
+                        _LOGGER.debug(
+                            "Extracted function call from UNEXPECTED_TOOL_CALL: %s",
+                            function_call.name,
+                        )
+                        return {"function_calls": [function_call], "raw_response": data}
+
+                # Check for native function calls
+                if FunctionCallHandler.is_function_call(data, "gemini"):
+                    function_calls = FunctionCallHandler.parse_gemini_response(data)
+                    if function_calls:
+                        _LOGGER.debug(
+                            "Gemini returned %d function call(s): %s",
+                            len(function_calls),
+                            [fc.name for fc in function_calls],
+                        )
+                        return {"function_calls": function_calls, "raw_response": data}
+
                 # Extract text from Gemini response
                 candidates = data.get("candidates", [])
                 if candidates and "content" in candidates[0]:
-                    # Check finish reason for potential issues
                     finish_reason = candidates[0].get("finishReason", "")
                     if finish_reason == "MAX_TOKENS":
                         _LOGGER.warning(
@@ -734,7 +788,7 @@ class AnthropicClient(BaseAIClient):
 
         payload = {
             "model": self.model,
-            "max_tokens": 8192,  # Maximum for Anthropic Claude models
+            "max_tokens": 8192,
             "temperature": 0.7,
             "messages": anthropic_messages,
         }
@@ -742,6 +796,13 @@ class AnthropicClient(BaseAIClient):
         # Add system message if present
         if system_message:
             payload["system"] = system_message
+
+        # Add tools for native function calling if provided
+        tools = kwargs.get("tools")
+        if tools:
+            anthropic_tools = ToolSchemaConverter.to_anthropic_format(tools)
+            payload["tools"] = anthropic_tools
+            _LOGGER.debug("Added %d tools to Anthropic request", len(anthropic_tools))
 
         _LOGGER.debug("Anthropic request payload: %s", json.dumps(payload, indent=2))
 
@@ -757,10 +818,21 @@ class AnthropicClient(BaseAIClient):
                     _LOGGER.error("Anthropic API error %d: %s", resp.status, error_text)
                     raise Exception(f"Anthropic API error {resp.status}")
                 data = await resp.json()
+
+                # Check for tool_use blocks (native function calling)
+                if FunctionCallHandler.is_function_call(data, "anthropic"):
+                    function_calls = FunctionCallHandler.parse_anthropic_response(data)
+                    if function_calls:
+                        _LOGGER.debug(
+                            "Anthropic returned %d function call(s): %s",
+                            len(function_calls),
+                            [fc.name for fc in function_calls],
+                        )
+                        return {"function_calls": function_calls, "raw_response": data}
+
                 # Extract text from Anthropic response
                 content_blocks = data.get("content", [])
                 if content_blocks and isinstance(content_blocks, list):
-                    # Get the text from the first content block
                     for block in content_blocks:
                         if block.get("type") == "text":
                             return block.get("text", str(data))
@@ -1198,12 +1270,23 @@ class GeminiOAuthClient(BaseAIClient):
                 "parts": [{"text": system_instruction}]
             }
 
+        # Add tools for native function calling if provided
+        tools = kwargs.get("tools")
+        if tools:
+            gemini_tools = ToolSchemaConverter.to_gemini_format(tools)
+            request_payload["tools"] = gemini_tools
+            _LOGGER.debug(
+                "Added %d tools to Gemini OAuth request",
+                len(gemini_tools[0].get("functionDeclarations", []))
+                if gemini_tools
+                else 0,
+            )
+
         async with aiohttp.ClientSession() as session:
             # Ensure we have a valid project ID (will onboard if necessary)
             project_id = await self._ensure_project_id(session, access_token)
 
             # Wrap payload as per Cloud Code API expectation
-            # Note: model name should be WITHOUT "models/" prefix for Cloud Code Assist API
             wrapped_payload = {
                 "project": project_id,
                 "model": self.model,
@@ -1253,6 +1336,30 @@ class GeminiOAuthClient(BaseAIClient):
                 # Unwrap response if it contains 'response' key (Cloud Code API behavior)
                 if "response" in data:
                     data = data["response"]
+
+                # Handle UNEXPECTED_TOOL_CALL (Gemini tried to call undeclared function)
+                if UnexpectedToolCallHandler.is_unexpected_tool_call(data):
+                    _LOGGER.warning("Gemini OAuth returned UNEXPECTED_TOOL_CALL")
+                    function_call = UnexpectedToolCallHandler.extract_function_call(
+                        data
+                    )
+                    if function_call:
+                        _LOGGER.debug(
+                            "Extracted function call from UNEXPECTED_TOOL_CALL: %s",
+                            function_call.name,
+                        )
+                        return {"function_calls": [function_call], "raw_response": data}
+
+                # Check for native function calls
+                if FunctionCallHandler.is_function_call(data, "gemini"):
+                    function_calls = FunctionCallHandler.parse_gemini_response(data)
+                    if function_calls:
+                        _LOGGER.debug(
+                            "Gemini OAuth returned %d function call(s): %s",
+                            len(function_calls),
+                            [fc.name for fc in function_calls],
+                        )
+                        return {"function_calls": function_calls, "raw_response": data}
 
                 # Extract text from Gemini response format
                 candidates = data.get("candidates", [])
@@ -1584,8 +1691,8 @@ class AiAgentHaAgent:
             "3. ONLY create dashboards/automations when user EXPLICITLY asks\n"
             "4. Put user-facing text in 'message' or 'response' field inside JSON\n"
             "5. When unsure what user wants → answer the question, don't create things\n\n"
-            "WRONG: I'll help you with that. {\"request_type\": ...}\n"
-            "CORRECT: {\"request_type\": \"final_response\", \"response\": \"I'll help you...\"}"
+            'WRONG: I\'ll help you with that. {"request_type": ...}\n'
+            'CORRECT: {"request_type": "final_response", "response": "I\'ll help you..."}'
         ),
     }
 
@@ -1604,10 +1711,10 @@ class AiAgentHaAgent:
             "★ NEVER create dashboards unless user asks!\n\n"
             "═══ RESPONSE FORMAT ═══\n\n"
             "Always respond with JSON only. No text outside JSON!\n\n"
-            "Questions: {\"request_type\": \"final_response\", \"response\": \"answer\"}\n"
-            "Fetch data: {\"request_type\": \"data_request\", \"request\": \"get_entity_state\", \"parameters\": {\"entity_id\": \"...\"}}\n"
-            "Control: {\"request_type\": \"call_service\", \"domain\": \"light\", \"service\": \"turn_on\", \"target\": {\"entity_id\": \"...\"}}\n"
-            "Areas: {\"request_type\": \"get_entities\", \"parameters\": {\"area_ids\": [\"...\", \"...\"]}}\n\n"
+            'Questions: {"request_type": "final_response", "response": "answer"}\n'
+            'Fetch data: {"request_type": "data_request", "request": "get_entity_state", "parameters": {"entity_id": "..."}}\n'
+            'Control: {"request_type": "call_service", "domain": "light", "service": "turn_on", "target": {"entity_id": "..."}}\n'
+            'Areas: {"request_type": "get_entities", "parameters": {"area_ids": ["...", "..."]}}\n\n'
             "═══ COMMANDS ═══\n\n"
             "DATA:\n"
             "- get_entity_state(entity_id)\n"
@@ -1648,8 +1755,8 @@ class AiAgentHaAgent:
             "3. Dashboards only when asked\n"
             "4. Call *_summary() before registry queries\n"
             "5. Max 3 retry attempts on errors\n\n"
-            "WRONG: I'll help. {\"request_type\": ...}\n"
-            "CORRECT: {\"request_type\": \"final_response\", \"response\": \"I'll help...\"}"
+            'WRONG: I\'ll help. {"request_type": ...}\n'
+            'CORRECT: {"request_type": "final_response", "response": "I\'ll help..."}'
         ),
     }
 
