@@ -39,6 +39,12 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import CONF_WEATHER_ENTITY, DOMAIN
+from .error_handler import (
+    ErrorClassifier,
+    ErrorType,
+    RetryTracker,
+    format_error_for_llm,
+)
 from .tools import ToolRegistry, get_tools_system_prompt, execute_tool
 
 _LOGGER = logging.getLogger(__name__)
@@ -1689,6 +1695,8 @@ class AiAgentHaAgent:
         self._last_request_time = 0
         self._request_count = 0
         self._request_window_start = time.time()
+        # Retry tracker for self-healing error recovery (per tool call)
+        self._tool_retry_trackers: Dict[str, RetryTracker] = {}
 
         provider = config.get("ai_provider", "openai")
         models_config = config.get("models", {})
@@ -4026,10 +4034,10 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                 )
 
                             # Check if any data request resulted in an error
+                            # Self-healing: feed errors back to LLM for retry
+                            error_msg = None
                             if isinstance(data, dict) and "error" in data:
-                                return _with_debug(
-                                    {"success": False, "error": data["error"]}
-                                )
+                                error_msg = data["error"]
                             elif isinstance(data, list) and any(
                                 "error" in item
                                 for item in data
@@ -4040,8 +4048,68 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                     for item in data
                                     if isinstance(item, dict) and "error" in item
                                 ]
+                                error_msg = "; ".join(errors)
+
+                            if error_msg:
+                                # Create unique key for this tool call
+                                tool_key = f"{request_type}:{json.dumps(parameters, sort_keys=True, default=str)}"
+
+                                # Get or create retry tracker for this tool call
+                                if tool_key not in self._tool_retry_trackers:
+                                    self._tool_retry_trackers[tool_key] = RetryTracker(
+                                        max_attempts=3
+                                    )
+
+                                tracker = self._tool_retry_trackers[tool_key]
+
+                                # Classify error type
+                                error_type, is_retryable = ErrorClassifier.classify(
+                                    error_msg
+                                )
+
+                                if tracker.can_retry():
+                                    tracker.increment()
+                                    _LOGGER.info(
+                                        "Tool error recovery attempt %d/3 for %s: %s",
+                                        tracker.current_attempt,
+                                        request_type,
+                                        error_msg[:100],
+                                    )
+
+                                    if error_type == ErrorType.TRANSIENT:
+                                        # Auto-retry transient errors with backoff
+                                        backoff = tracker.get_backoff()
+                                        _LOGGER.debug(
+                                            "Transient error, auto-retrying in %ds",
+                                            backoff,
+                                        )
+                                        await asyncio.sleep(backoff)
+                                        continue
+                                    else:
+                                        # Feed logic errors to LLM for self-correction
+                                        error_for_llm = format_error_for_llm(
+                                            error=error_msg,
+                                            request_type=request_type,
+                                            parameters=parameters,
+                                            attempt=tracker.current_attempt,
+                                            max_attempts=3,
+                                        )
+                                        _LOGGER.debug(
+                                            "Logic error, feeding to LLM for self-correction"
+                                        )
+                                        self.conversation_history.append(
+                                            {"role": "user", "content": error_for_llm}
+                                        )
+                                        continue
+
+                                # Max retries exceeded - return error to user
+                                _LOGGER.warning(
+                                    "Max retries exceeded for %s: %s",
+                                    request_type,
+                                    error_msg[:100],
+                                )
                                 return _with_debug(
-                                    {"success": False, "error": "; ".join(errors)}
+                                    {"success": False, "error": error_msg}
                                 )
 
                             _LOGGER.debug(
@@ -4577,10 +4645,11 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
         )
 
     def clear_conversation_history(self) -> None:
-        """Clear the conversation history and cache."""
+        """Clear the conversation history, cache, and retry trackers."""
         self.conversation_history = []
         self._cache.clear()
-        _LOGGER.debug("Conversation history and cache cleared")
+        self._tool_retry_trackers.clear()
+        _LOGGER.debug("Conversation history, cache, and retry trackers cleared")
 
     async def set_entity_state(
         self, entity_id: str, state: str, attributes: Optional[Dict[str, Any]] = None
