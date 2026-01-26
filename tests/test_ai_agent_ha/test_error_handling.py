@@ -237,3 +237,109 @@ class TestFormatErrorForLLM:
         except json.JSONDecodeError:
             # If not JSON, should still contain key info
             assert "test_tool" in result.lower() or "error" in result.lower()
+
+
+class TestIntegrationScenarios:
+    """Integration-style tests for error handling flow."""
+
+    def test_different_tools_have_separate_retry_counters(self):
+        """Different tool calls should have independent retry counters."""
+        tracker1 = RetryTracker(max_attempts=3)
+        tracker2 = RetryTracker(max_attempts=3)
+
+        # Exhaust tracker1
+        for _ in range(3):
+            tracker1.increment()
+
+        # tracker2 should still be fresh
+        assert tracker1.can_retry() is False
+        assert tracker2.can_retry() is True
+
+    def test_retry_counter_resets_correctly(self):
+        """Verify retry tracker resets work as expected."""
+        tracker = RetryTracker(max_attempts=3)
+
+        # Use some retries
+        tracker.increment()
+        tracker.increment()
+        assert tracker.current_attempt == 2
+
+        # Reset should restore to initial state
+        tracker.reset()
+        assert tracker.current_attempt == 0
+        assert tracker.can_retry() is True
+
+        # Should be able to use full 3 retries again
+        for _ in range(3):
+            tracker.increment()
+        assert tracker.can_retry() is False
+
+    def test_error_classification_coverage(self):
+        """Test that various error messages are correctly classified."""
+        test_cases = [
+            # (error_message, expected_type)
+            ("Connection timeout", ErrorType.TRANSIENT),
+            ("Rate limit exceeded", ErrorType.TRANSIENT),
+            ("Service temporarily unavailable", ErrorType.TRANSIENT),
+            ("Error 503: Service unavailable", ErrorType.TRANSIENT),
+            ("ECONNRESET: Connection reset", ErrorType.TRANSIENT),
+            ("Entity light.test not found", ErrorType.LOGIC),
+            ("Invalid parameter: brightness", ErrorType.LOGIC),
+            ("Permission denied for entity", ErrorType.LOGIC),
+            ("Area kitchen does not exist", ErrorType.LOGIC),
+            ("Unknown error occurred", ErrorType.LOGIC),  # Default to LOGIC
+        ]
+
+        for error_msg, expected_type in test_cases:
+            error_type, _ = ErrorClassifier.classify(error_msg)
+            assert error_type == expected_type, f"Failed for: {error_msg}"
+
+    def test_format_error_contains_all_required_fields(self):
+        """Verify formatted error has all fields needed for LLM self-correction."""
+        result = format_error_for_llm(
+            error="Entity not found",
+            request_type="get_entity_state",
+            parameters={"entity_id": "light.test"},
+            attempt=2,
+            max_attempts=3,
+        )
+
+        parsed = json.loads(result)
+
+        # All required fields should be present
+        assert parsed["tool_error"] is True
+        assert "Entity not found" in parsed["error"]
+        assert parsed["failed_request"] == "get_entity_state"
+        assert parsed["failed_parameters"]["entity_id"] == "light.test"
+        assert parsed["attempt"] == 2
+        assert parsed["max_attempts"] == 3
+        assert "hint" in parsed
+
+    def test_backoff_increases_with_attempts(self):
+        """Verify backoff time increases with each attempt."""
+        tracker = RetryTracker(max_attempts=5)
+
+        backoffs = []
+        for _ in range(5):
+            tracker.increment()
+            backoffs.append(tracker.get_backoff())
+
+        # Each backoff should be >= previous
+        for i in range(1, len(backoffs)):
+            assert backoffs[i] >= backoffs[i - 1]
+
+    def test_transient_vs_logic_error_behavior(self):
+        """Verify different error types produce expected classification."""
+        # Transient errors should be retryable
+        transient_type, transient_retryable = ErrorClassifier.classify(
+            "Connection timeout after 30s"
+        )
+        assert transient_type == ErrorType.TRANSIENT
+        assert transient_retryable is True
+
+        # Logic errors should not be auto-retryable
+        logic_type, logic_retryable = ErrorClassifier.classify(
+            "Entity sensor.invalid_entity not found"
+        )
+        assert logic_type == ErrorType.LOGIC
+        assert logic_retryable is False
