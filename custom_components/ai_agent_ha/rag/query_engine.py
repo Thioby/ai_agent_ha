@@ -104,8 +104,8 @@ class QueryEngine:
         lines = []
         current_length = 0
 
-        # Header
-        header = "Relevant entities:"
+        # Header with instruction to use exact entity_ids
+        header = "Relevant entities (IMPORTANT: use exact entity_id values, do not shorten or modify them):"
         lines.append(header)
         current_length += len(header)
 

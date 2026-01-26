@@ -4862,6 +4862,32 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
             if service_data:
                 call_data.update(service_data)
 
+            # Validate that target entities exist before calling service
+            if "entity_id" in call_data:
+                missing_entities = []
+                suggestions = {}
+                for entity_id in call_data["entity_id"]:
+                    if not self.hass.states.get(entity_id):
+                        missing_entities.append(entity_id)
+                        # Find similar entities for suggestions
+                        similar = [
+                            state.entity_id
+                            for state in self.hass.states.async_all()
+                            if entity_id.split(".")[-1] in state.entity_id
+                            or state.entity_id.split(".")[-1] in entity_id
+                        ][:3]
+                        if similar:
+                            suggestions[entity_id] = similar
+
+                if missing_entities:
+                    error_msg = f"Entity not found: {', '.join(missing_entities)}"
+                    if suggestions:
+                        suggestion_parts = []
+                        for missing, similar in suggestions.items():
+                            suggestion_parts.append(f"{missing} -> try: {', '.join(similar)}")
+                        error_msg += f". Did you mean: {'; '.join(suggestion_parts)}"
+                    return {"error": error_msg}
+
             _LOGGER.debug("Final service call data: %s", json.dumps(call_data))
 
             # Call the service

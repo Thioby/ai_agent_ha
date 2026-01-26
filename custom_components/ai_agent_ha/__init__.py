@@ -343,6 +343,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error(f"Error updating dashboard: {e}")
             return {"error": str(e)}
 
+    async def async_handle_rag_reindex(call):
+        """Handle the rag_reindex service call to reindex all entities."""
+        try:
+            rag_manager = hass.data[DOMAIN].get("rag_manager")
+            if not rag_manager:
+                _LOGGER.warning("RAG system not initialized, cannot reindex")
+                return {"error": "RAG system not initialized"}
+
+            _LOGGER.info("Starting RAG full reindex via service call...")
+            await rag_manager.full_reindex()
+            stats = await rag_manager.get_stats()
+            _LOGGER.info("RAG reindex completed: %d entities indexed", stats.get("total_documents", 0))
+            return {"success": True, "entities_indexed": stats.get("total_documents", 0)}
+        except Exception as e:
+            _LOGGER.error(f"Error during RAG reindex: {e}")
+            return {"error": str(e)}
+
     # Register services
     hass.services.async_register(DOMAIN, "query", async_handle_query)
     hass.services.async_register(
@@ -359,6 +376,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     hass.services.async_register(
         DOMAIN, "update_dashboard", async_handle_update_dashboard
+    )
+    hass.services.async_register(
+        DOMAIN, "rag_reindex", async_handle_rag_reindex
     )
 
     # Register WebSocket API commands (only once)
@@ -485,6 +505,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_remove(DOMAIN, "load_prompt_history")
     hass.services.async_remove(DOMAIN, "create_dashboard")
     hass.services.async_remove(DOMAIN, "update_dashboard")
+    hass.services.async_remove(DOMAIN, "rag_reindex")
 
     # Clean up storage cache instances
     storage_cache_prefix = f"{DOMAIN}_storage_"

@@ -96,3 +96,7 @@ update_dashboard:
             - "alter"
             - "zai"
             - "local"
+
+rag_reindex:
+  name: "Reindex RAG Entities"
+  description: "Perform a full reindex of all Home Assistant entities in the RAG vector database. Use this if entity IDs have changed or the index is out of sync."

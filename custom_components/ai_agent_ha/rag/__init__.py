@@ -163,6 +163,9 @@ class RAGManager:
         Uses semantic search to find entities related to the query
         and returns a compressed context string suitable for LLM.
 
+        Includes self-healing: removes stale entities from the index
+        if they no longer exist in Home Assistant.
+
         Args:
             query: The user's query text.
             top_k: Maximum number of entities to include.
@@ -173,10 +176,42 @@ class RAGManager:
         self._ensure_initialized()
 
         try:
-            context = await self._query_engine.search_and_format(
+            # First, search for entities
+            results = await self._query_engine.search_entities(
                 query=query,
                 top_k=top_k,
             )
+
+            # Validate entities exist and remove stale ones
+            valid_results = []
+            stale_entities = []
+
+            for result in results:
+                entity_id = result.id
+                # Check if entity still exists in Home Assistant
+                if self.hass.states.get(entity_id):
+                    valid_results.append(result)
+                else:
+                    stale_entities.append(entity_id)
+
+            # Remove stale entities from index (self-healing)
+            if stale_entities:
+                _LOGGER.warning(
+                    "Found %d stale entities in RAG index, removing: %s",
+                    len(stale_entities),
+                    stale_entities,
+                )
+                for entity_id in stale_entities:
+                    try:
+                        await self._indexer.remove_entity(entity_id)
+                    except Exception as e:
+                        _LOGGER.error(
+                            "Failed to remove stale entity %s: %s", entity_id, e
+                        )
+
+            # Build context from valid results only
+            context = self._query_engine.build_compressed_context(valid_results)
+
             if context:
                 _LOGGER.debug(
                     "RAG context generated (%d chars) for query: %s...",

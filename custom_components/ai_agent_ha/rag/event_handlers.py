@@ -130,7 +130,7 @@ class EntityRegistryEventHandler:
     ) -> None:
         """Handle entity updated event.
 
-        Reindexes if relevant attributes changed (name, area, device_class).
+        Reindexes if relevant attributes changed (name, area, device_class, entity_id).
 
         Args:
             entity_id: The updated entity ID.
@@ -143,7 +143,22 @@ class EntityRegistryEventHandler:
             "device_class",
             "original_device_class",
             "original_name",
+            "entity_id",  # Track entity_id renames
         }
+
+        # If entity_id changed, we need to remove the old one
+        if "entity_id" in changes:
+            old_entity_id = changes.get("entity_id", {}).get("old_value")
+            if old_entity_id:
+                _LOGGER.info(
+                    "Entity ID changed from %s to %s, removing old from index",
+                    old_entity_id,
+                    entity_id,
+                )
+                try:
+                    await self.indexer.remove_entity(old_entity_id)
+                except Exception as e:
+                    _LOGGER.error("Failed to remove old entity %s: %s", old_entity_id, e)
 
         if changes and not relevant_changes.intersection(changes.keys()):
             _LOGGER.debug(
