@@ -27,6 +27,8 @@ ai_agent_ha:
 import asyncio
 import json
 import logging
+import random
+import re
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
@@ -1026,6 +1028,11 @@ class GeminiOAuthClient(BaseAIClient):
     onboard the user to obtain a project ID for the FREE tier.
     """
 
+    # Retry configuration (from gemini-cli)
+    MAX_ATTEMPTS = 10
+    INITIAL_DELAY_MS = 5000
+    MAX_DELAY_MS = 30000
+
     def __init__(self, hass, config_entry, model="gemini-3-pro-preview"):
         import asyncio
 
@@ -1229,6 +1236,131 @@ class GeminiOAuthClient(BaseAIClient):
                 "Please try again later or check your Google account permissions."
             )
 
+    async def _retry_with_backoff(self, func, *args, **kwargs):
+        """Retry with exponential backoff for 429 and 5xx errors."""
+        attempt = 0
+        current_delay = self.INITIAL_DELAY_MS / 1000  # Convert to seconds
+
+        while attempt < self.MAX_ATTEMPTS:
+            attempt += 1
+            try:
+                return await func(*args, **kwargs)
+            except Exception as e:
+                error_str = str(e)
+
+                # Check if retryable (429 or 5xx)
+                is_429 = "429" in error_str
+                is_5xx = any(f"{code}" in error_str for code in range(500, 600))
+
+                if not (is_429 or is_5xx):
+                    raise  # Non-retryable error
+
+                if attempt >= self.MAX_ATTEMPTS:
+                    _LOGGER.error(
+                        "Max retry attempts (%d) reached for Gemini API",
+                        self.MAX_ATTEMPTS,
+                    )
+                    raise
+
+                # Check for "Please retry in Xs" or "retry in Xms" in error message
+                retry_match = re.search(
+                    r"retry in (\d+(?:\.\d+)?)\s*(s|ms)",
+                    error_str,
+                    re.IGNORECASE,
+                )
+                if retry_match:
+                    delay_value = float(retry_match.group(1))
+                    delay_unit = retry_match.group(2).lower()
+                    delay = delay_value if delay_unit == "s" else delay_value / 1000
+                else:
+                    # Exponential backoff with jitter (±30%)
+                    jitter = current_delay * 0.3 * (random.random() * 2 - 1)
+                    delay = max(0, current_delay + jitter)
+
+                _LOGGER.warning(
+                    "Gemini API %s (attempt %d/%d). Retrying in %.1fs...",
+                    "429 rate limited" if is_429 else "server error",
+                    attempt,
+                    self.MAX_ATTEMPTS,
+                    delay,
+                )
+
+                await asyncio.sleep(delay)
+
+                # Increase delay for next attempt (exponential backoff)
+                current_delay = min(self.MAX_DELAY_MS / 1000, current_delay * 2)
+
+        raise Exception("Retry attempts exhausted")
+
+    async def _do_request(
+        self,
+        session: aiohttp.ClientSession,
+        url: str,
+        headers: dict,
+        wrapped_payload: dict,
+    ):
+        """Execute the HTTP request to Gemini API.
+
+        This method is called by _retry_with_backoff for automatic retry
+        on 429 rate limiting and 5xx server errors.
+        """
+        async with session.post(
+            url,
+            headers=headers,
+            json=wrapped_payload,
+            timeout=aiohttp.ClientTimeout(total=300),
+        ) as resp:
+            response_text = await resp.text()
+
+            if resp.status != 200:
+                _LOGGER.error(
+                    "Gemini OAuth API error %d: %s", resp.status, response_text
+                )
+                raise Exception(
+                    f"Gemini OAuth API error {resp.status}: {response_text[:200]}"
+                )
+
+            data = json.loads(response_text)
+
+            # Unwrap response if it contains 'response' key (Cloud Code API behavior)
+            if "response" in data:
+                data = data["response"]
+
+            # Handle UNEXPECTED_TOOL_CALL (Gemini tried to call undeclared function)
+            if UnexpectedToolCallHandler.is_unexpected_tool_call(data):
+                _LOGGER.warning("Gemini OAuth returned UNEXPECTED_TOOL_CALL")
+                function_call = UnexpectedToolCallHandler.extract_function_call(data)
+                if function_call:
+                    _LOGGER.debug(
+                        "Extracted function call from UNEXPECTED_TOOL_CALL: %s",
+                        function_call.name,
+                    )
+                    return {"function_calls": [function_call], "raw_response": data}
+
+            # Check for native function calls
+            if FunctionCallHandler.is_function_call(data, "gemini"):
+                function_calls = FunctionCallHandler.parse_gemini_response(data)
+                if function_calls:
+                    _LOGGER.debug(
+                        "Gemini OAuth returned %d function call(s): %s",
+                        len(function_calls),
+                        [fc.name for fc in function_calls],
+                    )
+                    return {"function_calls": function_calls, "raw_response": data}
+
+            # Extract text from Gemini response format
+            candidates = data.get("candidates", [])
+            if candidates:
+                content = candidates[0].get("content", {})
+                parts = content.get("parts", [])
+                if parts:
+                    return parts[0].get("text", str(data))
+
+            _LOGGER.warning(
+                "Unexpected Gemini response format: %s", response_text[:200]
+            )
+            return str(data)
+
     async def get_response(self, messages, **kwargs):
         """Send request to Gemini API using OAuth token."""
         _LOGGER.info(
@@ -1315,64 +1447,10 @@ class GeminiOAuthClient(BaseAIClient):
                 self.model,
             )
 
-            async with session.post(
-                url,
-                headers=headers,
-                json=wrapped_payload,
-                timeout=aiohttp.ClientTimeout(total=300),
-            ) as resp:
-                response_text = await resp.text()
-
-                if resp.status != 200:
-                    _LOGGER.error(
-                        "Gemini OAuth API error %d: %s", resp.status, response_text
-                    )
-                    raise Exception(
-                        f"Gemini OAuth API error {resp.status}: {response_text[:200]}"
-                    )
-
-                data = json.loads(response_text)
-
-                # Unwrap response if it contains 'response' key (Cloud Code API behavior)
-                if "response" in data:
-                    data = data["response"]
-
-                # Handle UNEXPECTED_TOOL_CALL (Gemini tried to call undeclared function)
-                if UnexpectedToolCallHandler.is_unexpected_tool_call(data):
-                    _LOGGER.warning("Gemini OAuth returned UNEXPECTED_TOOL_CALL")
-                    function_call = UnexpectedToolCallHandler.extract_function_call(
-                        data
-                    )
-                    if function_call:
-                        _LOGGER.debug(
-                            "Extracted function call from UNEXPECTED_TOOL_CALL: %s",
-                            function_call.name,
-                        )
-                        return {"function_calls": [function_call], "raw_response": data}
-
-                # Check for native function calls
-                if FunctionCallHandler.is_function_call(data, "gemini"):
-                    function_calls = FunctionCallHandler.parse_gemini_response(data)
-                    if function_calls:
-                        _LOGGER.debug(
-                            "Gemini OAuth returned %d function call(s): %s",
-                            len(function_calls),
-                            [fc.name for fc in function_calls],
-                        )
-                        return {"function_calls": function_calls, "raw_response": data}
-
-                # Extract text from Gemini response format
-                candidates = data.get("candidates", [])
-                if candidates:
-                    content = candidates[0].get("content", {})
-                    parts = content.get("parts", [])
-                    if parts:
-                        return parts[0].get("text", str(data))
-
-                _LOGGER.warning(
-                    "Unexpected Gemini response format: %s", response_text[:200]
-                )
-                return str(data)
+            # Execute request with retry for 429 and 5xx errors
+            return await self._retry_with_backoff(
+                self._do_request, session, url, headers, wrapped_payload
+            )
 
 
 class OpenRouterClient(BaseAIClient):
