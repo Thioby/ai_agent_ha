@@ -579,9 +579,40 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
         provider = self.options_data["ai_provider"]
         current_provider = self.options_data["current_provider"]
 
-        # OAuth providers use OAuth flow, not simple token - redirect to abort with message
+        # Get current RAG setting (available for all providers)
+        current_rag_enabled = self.config_entry.data.get(
+            CONF_RAG_ENABLED, DEFAULT_RAG_ENABLED
+        )
+
+        # OAuth providers - show only RAG option (no token reconfiguration)
         if provider in ("anthropic_oauth", "gemini_oauth"):
-            return self.async_abort(reason="oauth_reconfigure_not_supported")
+            if user_input is not None:
+                # Update RAG setting
+                updated_data = dict(self.config_entry.data)
+                updated_data[CONF_RAG_ENABLED] = user_input.get(
+                    CONF_RAG_ENABLED, current_rag_enabled
+                )
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry, data=updated_data
+                )
+                return self.async_create_entry(title="", data={})
+
+            # Show form with only RAG option for OAuth providers
+            return self.async_show_form(
+                step_id="configure_options",
+                data_schema=vol.Schema(
+                    {
+                        vol.Optional(
+                            CONF_RAG_ENABLED, default=current_rag_enabled
+                        ): BooleanSelector(),
+                    }
+                ),
+                errors=errors,
+                description_placeholders={
+                    "token_label": "OAuth",
+                    "provider": PROVIDERS[provider],
+                },
+            )
 
         token_field = TOKEN_FIELD_NAMES[provider]
         token_label = TOKEN_LABELS[provider]
@@ -589,9 +620,6 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
         # Get current configuration
         current_models = self.config_entry.data.get("models", {})
         current_model = current_models.get(provider, DEFAULT_MODELS[provider])
-        current_rag_enabled = self.config_entry.data.get(
-            CONF_RAG_ENABLED, DEFAULT_RAG_ENABLED
-        )
         # For Alter provider, if model is empty, default to "Custom..." for the dropdown
         if provider == "alter" and not current_model:
             current_model = "Custom..."
