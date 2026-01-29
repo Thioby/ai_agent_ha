@@ -1,0 +1,8 @@
+# Test dependencies for AI Agent HA
+pytest>=7.3.1
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-timeout>=2.2.0
+pytest-homeassistant-custom-component>=0.13.0
+aioresponses>=0.7.6
+syrupy>=4.0.0
