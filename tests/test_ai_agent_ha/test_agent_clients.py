@@ -13,6 +13,8 @@ from custom_components.ai_agent_ha.agent import (
     LlamaClient,
     AlterClient,
     ZaiClient,
+    AnthropicOAuthClient,
+    GeminiOAuthClient,
     sanitize_for_logging,
 )
 
@@ -1747,3 +1749,452 @@ class TestZaiClientGetResponse:
             result = await client.get_response(messages)
 
         assert "result" in result
+
+
+class TestAnthropicOAuthClient:
+    """Test AnthropicOAuthClient functionality."""
+
+    def _create_mock_response(self, status=200, json_data=None, text_data=None):
+        """Helper to create mock aiohttp response."""
+        mock_resp = MagicMock()
+        mock_resp.status = status
+        if json_data is not None:
+            mock_resp.text = AsyncMock(return_value=json.dumps(json_data))
+        elif text_data is not None:
+            mock_resp.text = AsyncMock(return_value=text_data)
+        return mock_resp
+
+    def test_anthropic_oauth_client_initialization(self):
+        """Test AnthropicOAuthClient initialization."""
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            "anthropic_oauth": {
+                "access_token": "test-token",
+                "refresh_token": "test-refresh",
+                "expires_at": 9999999999,
+            }
+        }
+
+        client = AnthropicOAuthClient(mock_hass, mock_entry, "claude-3-opus")
+        assert client.model == "claude-3-opus"
+        assert client.api_url == "https://api.anthropic.com/v1/messages"
+        assert client._oauth_data["access_token"] == "test-token"
+
+    def test_transform_request_adds_tool_prefix(self):
+        """Test _transform_request adds mcp_ prefix to tools."""
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {"anthropic_oauth": {}}
+
+        client = AnthropicOAuthClient(mock_hass, mock_entry)
+        payload = {
+            "tools": [{"name": "my_tool", "description": "test"}],
+            "model": "claude-3-opus",
+        }
+
+        result = client._transform_request(payload)
+
+        assert result["tools"][0]["name"] == "mcp_my_tool"
+
+    def test_transform_request_renames_tool_use_blocks(self):
+        """Test _transform_request renames tool_use blocks in messages."""
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {"anthropic_oauth": {}}
+
+        client = AnthropicOAuthClient(mock_hass, mock_entry)
+        payload = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "execute_command"}],
+                }
+            ],
+            "model": "claude-3-opus",
+        }
+
+        result = client._transform_request(payload)
+
+        assert result["messages"][0]["content"][0]["name"] == "mcp_execute_command"
+
+    def test_transform_request_replaces_system_string(self):
+        """Test _transform_request replaces OpenCode in system string."""
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {"anthropic_oauth": {}}
+
+        client = AnthropicOAuthClient(mock_hass, mock_entry)
+        payload = {
+            "system": "You are using OpenCode for coding tasks.",
+            "model": "claude-3-opus",
+        }
+
+        result = client._transform_request(payload)
+
+        assert "OpenCode" not in result["system"]
+        assert "Claude Code" in result["system"]
+
+    def test_transform_request_replaces_system_list(self):
+        """Test _transform_request replaces OpenCode in system list."""
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {"anthropic_oauth": {}}
+
+        client = AnthropicOAuthClient(mock_hass, mock_entry)
+        payload = {
+            "system": [{"type": "text", "text": "You are OpenCode assistant."}],
+            "model": "claude-3-opus",
+        }
+
+        result = client._transform_request(payload)
+
+        assert "OpenCode" not in result["system"][0]["text"]
+
+    def test_transform_response_removes_mcp_prefix(self):
+        """Test _transform_response removes mcp_ prefix from names."""
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {"anthropic_oauth": {}}
+
+        client = AnthropicOAuthClient(mock_hass, mock_entry)
+        text = '{"name": "mcp_execute_command", "type": "tool_use"}'
+
+        result = client._transform_response(text)
+
+        assert '"name": "execute_command"' in result
+
+    @pytest.mark.asyncio
+    async def test_get_valid_token_returns_cached(self):
+        """Test _get_valid_token returns cached token if not expired."""
+        import time
+
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            "anthropic_oauth": {
+                "access_token": "cached-token",
+                "refresh_token": "test-refresh",
+                "expires_at": time.time() + 600,  # Valid for 10 more minutes
+            }
+        }
+
+        client = AnthropicOAuthClient(mock_hass, mock_entry)
+        token = await client._get_valid_token()
+
+        assert token == "cached-token"
+
+    @pytest.mark.asyncio
+    async def test_get_valid_token_refreshes_expired(self):
+        """Test _get_valid_token refreshes expired token."""
+        import time
+
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            "anthropic_oauth": {
+                "access_token": "old-token",
+                "refresh_token": "test-refresh",
+                "expires_at": time.time() - 100,  # Expired
+            }
+        }
+
+        new_tokens = {
+            "access_token": "new-token",
+            "refresh_token": "new-refresh",
+            "expires_at": time.time() + 3600,
+        }
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            with patch(
+                "custom_components.ai_agent_ha.oauth.refresh_token",
+                new=AsyncMock(return_value=new_tokens),
+            ):
+                client = AnthropicOAuthClient(mock_hass, mock_entry)
+                token = await client._get_valid_token()
+
+        assert token == "new-token"
+
+    @pytest.mark.asyncio
+    async def test_get_response_success(self):
+        """Test successful get_response."""
+        import time
+
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            "anthropic_oauth": {
+                "access_token": "valid-token",
+                "refresh_token": "test-refresh",
+                "expires_at": time.time() + 600,
+            }
+        }
+
+        response_data = {
+            "content": [{"type": "text", "text": "Hello from Claude!"}],
+        }
+        mock_resp = self._create_mock_response(json_data=response_data)
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(
+            return_value=MagicMock(
+                post=MagicMock(
+                    return_value=MagicMock(
+                        __aenter__=AsyncMock(return_value=mock_resp),
+                        __aexit__=AsyncMock(return_value=None),
+                    )
+                )
+            )
+        )
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            client = AnthropicOAuthClient(mock_hass, mock_entry)
+            result = await client.get_response([{"role": "user", "content": "Hi"}])
+
+        assert result == "Hello from Claude!"
+
+    @pytest.mark.asyncio
+    async def test_get_response_http_error(self):
+        """Test get_response handles HTTP error."""
+        import time
+
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            "anthropic_oauth": {
+                "access_token": "valid-token",
+                "refresh_token": "test-refresh",
+                "expires_at": time.time() + 600,
+            }
+        }
+
+        mock_resp = self._create_mock_response(status=401, text_data="Unauthorized")
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(
+            return_value=MagicMock(
+                post=MagicMock(
+                    return_value=MagicMock(
+                        __aenter__=AsyncMock(return_value=mock_resp),
+                        __aexit__=AsyncMock(return_value=None),
+                    )
+                )
+            )
+        )
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            client = AnthropicOAuthClient(mock_hass, mock_entry)
+            with pytest.raises(Exception) as exc_info:
+                await client.get_response([{"role": "user", "content": "Hi"}])
+
+        assert "401" in str(exc_info.value)
+
+
+class TestGeminiOAuthClient:
+    """Test GeminiOAuthClient functionality."""
+
+    def _create_mock_response(self, status=200, json_data=None, text_data=None):
+        """Helper to create mock aiohttp response."""
+        mock_resp = MagicMock()
+        mock_resp.status = status
+        if json_data is not None:
+            mock_resp.text = AsyncMock(return_value=json.dumps(json_data))
+            mock_resp.json = AsyncMock(return_value=json_data)
+        elif text_data is not None:
+            mock_resp.text = AsyncMock(return_value=text_data)
+        return mock_resp
+
+    def test_gemini_oauth_client_initialization(self):
+        """Test GeminiOAuthClient initialization."""
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            "gemini_oauth": {
+                "access_token": "test-token",
+                "refresh_token": "test-refresh",
+                "expires_at": 9999999999,
+                "managed_project_id": "test-project",
+            }
+        }
+
+        client = GeminiOAuthClient(mock_hass, mock_entry, "gemini-3-pro")
+        assert client.model == "gemini-3-pro"
+        assert "cloudcode-pa.googleapis.com" in client.api_url
+        assert client._oauth_data["managed_project_id"] == "test-project"
+
+    @pytest.mark.asyncio
+    async def test_get_valid_token_returns_cached(self):
+        """Test _get_valid_token returns cached token if not expired."""
+        import time
+
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            "gemini_oauth": {
+                "access_token": "cached-token",
+                "refresh_token": "test-refresh",
+                "expires_at": time.time() + 600,
+            }
+        }
+
+        client = GeminiOAuthClient(mock_hass, mock_entry)
+        token = await client._get_valid_token()
+
+        assert token == "cached-token"
+
+    @pytest.mark.asyncio
+    async def test_get_valid_token_no_access_token_raises(self):
+        """Test _get_valid_token raises when no access token."""
+        import time
+
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            "gemini_oauth": {
+                "refresh_token": "test-refresh",
+                "expires_at": time.time() + 600,
+            }
+        }
+
+        client = GeminiOAuthClient(mock_hass, mock_entry)
+        with pytest.raises(Exception) as exc_info:
+            await client._get_valid_token()
+
+        assert "No access token available" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_get_valid_token_no_refresh_token_raises(self):
+        """Test _get_valid_token raises when no refresh token."""
+        import time
+
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            "gemini_oauth": {
+                "access_token": "old-token",
+                "expires_at": time.time() - 100,  # Expired
+            }
+        }
+
+        client = GeminiOAuthClient(mock_hass, mock_entry)
+        with pytest.raises(Exception) as exc_info:
+            await client._get_valid_token()
+
+        assert "No refresh token available" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_get_valid_token_refreshes_expired(self):
+        """Test _get_valid_token refreshes expired token."""
+        import time
+
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            "gemini_oauth": {
+                "access_token": "old-token",
+                "refresh_token": "test-refresh",
+                "expires_at": time.time() - 100,
+            }
+        }
+
+        new_tokens = {
+            "access_token": "new-gemini-token",
+            "refresh_token": "new-refresh",
+            "expires_at": time.time() + 3600,
+        }
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=MagicMock())
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            with patch(
+                "custom_components.ai_agent_ha.gemini_oauth.refresh_token",
+                new=AsyncMock(return_value=new_tokens),
+            ):
+                client = GeminiOAuthClient(mock_hass, mock_entry)
+                token = await client._get_valid_token()
+
+        assert token == "new-gemini-token"
+
+    @pytest.mark.asyncio
+    async def test_save_project_id(self):
+        """Test _save_project_id persists project ID."""
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {"gemini_oauth": {"access_token": "test"}}
+
+        client = GeminiOAuthClient(mock_hass, mock_entry)
+        await client._save_project_id("projects/123456")
+
+        assert client._oauth_data["managed_project_id"] == "projects/123456"
+        mock_hass.config_entries.async_update_entry.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_ensure_project_id_returns_cached(self):
+        """Test _ensure_project_id returns cached project ID."""
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            "gemini_oauth": {
+                "access_token": "test",
+                "managed_project_id": "cached-project-id",
+            }
+        }
+
+        mock_session = MagicMock()
+        client = GeminiOAuthClient(mock_hass, mock_entry)
+        project_id = await client._ensure_project_id(mock_session, "token")
+
+        assert project_id == "cached-project-id"
+
+    @pytest.mark.asyncio
+    async def test_ensure_project_id_from_load_code_assist(self):
+        """Test _ensure_project_id gets project from loadCodeAssist."""
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {"gemini_oauth": {"access_token": "test"}}
+
+        load_response = self._create_mock_response(
+            json_data={"cloudaicompanionProject": "loaded-project-123"}
+        )
+
+        mock_session = MagicMock()
+        mock_post_ctx = MagicMock()
+        mock_post_ctx.__aenter__ = AsyncMock(return_value=load_response)
+        mock_post_ctx.__aexit__ = AsyncMock(return_value=None)
+        mock_session.post = MagicMock(return_value=mock_post_ctx)
+
+        client = GeminiOAuthClient(mock_hass, mock_entry)
+        project_id = await client._ensure_project_id(mock_session, "token")
+
+        assert project_id == "loaded-project-123"
+
+    @pytest.mark.asyncio
+    async def test_ensure_project_id_enterprise_tier_raises(self):
+        """Test _ensure_project_id raises for enterprise tier."""
+        mock_hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.data = {"gemini_oauth": {"access_token": "test"}}
+
+        load_response = self._create_mock_response(
+            json_data={"currentTier": {"id": "ENTERPRISE"}}
+        )
+
+        mock_session = MagicMock()
+        mock_post_ctx = MagicMock()
+        mock_post_ctx.__aenter__ = AsyncMock(return_value=load_response)
+        mock_post_ctx.__aexit__ = AsyncMock(return_value=None)
+        mock_session.post = MagicMock(return_value=mock_post_ctx)
+
+        client = GeminiOAuthClient(mock_hass, mock_entry)
+        with pytest.raises(Exception) as exc_info:
+            await client._ensure_project_id(mock_session, "token")
+
+        assert "ENTERPRISE" in str(exc_info.value)

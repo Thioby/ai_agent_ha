@@ -218,6 +218,29 @@ class TestWsListSessions:
         assert result == {"sessions": []}
 
     @pytest.mark.asyncio
+    async def test_list_sessions_storage_error(
+        self, hass: HomeAssistant, mock_connection: MockConnection
+    ) -> None:
+        """Test listing sessions when storage raises an error."""
+        from custom_components.ai_agent_ha.websocket_api import _get_storage, _STORAGE_CACHE_PREFIX
+
+        # Create a mock storage that raises an exception
+        mock_storage = MagicMock()
+        mock_storage.list_sessions = AsyncMock(side_effect=Exception("Storage error"))
+
+        # Cache the mock storage
+        cache_key = f"{_STORAGE_CACHE_PREFIX}test_user_123"
+        hass.data[cache_key] = mock_storage
+
+        msg = {"id": 1, "type": "ai_agent_ha/sessions/list"}
+        await ws_list_sessions(hass, mock_connection, msg)
+
+        assert len(mock_connection.errors) == 1
+        msg_id, code, message = mock_connection.errors[0]
+        assert msg_id == 1
+        assert code == ERR_STORAGE_ERROR
+
+    @pytest.mark.asyncio
     async def test_list_sessions_with_data(
         self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
@@ -287,6 +310,54 @@ class TestWsGetSession:
         assert msg_id == 1
         assert code == ERR_SESSION_NOT_FOUND
 
+    @pytest.mark.asyncio
+    async def test_get_session_value_error(
+        self, hass: HomeAssistant, mock_connection: MockConnection
+    ) -> None:
+        """Test getting session when ValueError is raised."""
+        from custom_components.ai_agent_ha.websocket_api import _STORAGE_CACHE_PREFIX
+
+        mock_storage = MagicMock()
+        mock_storage.get_session = AsyncMock(side_effect=ValueError("Invalid session"))
+
+        cache_key = f"{_STORAGE_CACHE_PREFIX}test_user_123"
+        hass.data[cache_key] = mock_storage
+
+        msg = {
+            "id": 1,
+            "type": "ai_agent_ha/sessions/get",
+            "session_id": "12345678-1234-1234-1234-123456789012",
+        }
+        await ws_get_session(hass, mock_connection, msg)
+
+        assert len(mock_connection.errors) == 1
+        _, code, _ = mock_connection.errors[0]
+        assert code == ERR_SESSION_NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_get_session_storage_error(
+        self, hass: HomeAssistant, mock_connection: MockConnection
+    ) -> None:
+        """Test getting session when storage raises exception."""
+        from custom_components.ai_agent_ha.websocket_api import _STORAGE_CACHE_PREFIX
+
+        mock_storage = MagicMock()
+        mock_storage.get_session = AsyncMock(side_effect=Exception("Storage error"))
+
+        cache_key = f"{_STORAGE_CACHE_PREFIX}test_user_123"
+        hass.data[cache_key] = mock_storage
+
+        msg = {
+            "id": 1,
+            "type": "ai_agent_ha/sessions/get",
+            "session_id": "12345678-1234-1234-1234-123456789012",
+        }
+        await ws_get_session(hass, mock_connection, msg)
+
+        assert len(mock_connection.errors) == 1
+        _, code, _ = mock_connection.errors[0]
+        assert code == ERR_STORAGE_ERROR
+
 
 class TestWsCreateSession:
     """Tests for ws_create_session command."""
@@ -326,6 +397,30 @@ class TestWsCreateSession:
         assert len(mock_connection.results) == 1
         _, result = mock_connection.results[0]
         assert result["title"] == "My Custom Chat"
+
+    @pytest.mark.asyncio
+    async def test_create_session_storage_error(
+        self, hass: HomeAssistant, mock_connection: MockConnection
+    ) -> None:
+        """Test creating session when storage raises exception."""
+        from custom_components.ai_agent_ha.websocket_api import _STORAGE_CACHE_PREFIX
+
+        mock_storage = MagicMock()
+        mock_storage.create_session = AsyncMock(side_effect=Exception("Storage error"))
+
+        cache_key = f"{_STORAGE_CACHE_PREFIX}test_user_123"
+        hass.data[cache_key] = mock_storage
+
+        msg = {
+            "id": 1,
+            "type": "ai_agent_ha/sessions/create",
+            "provider": "openai",
+        }
+        await ws_create_session(hass, mock_connection, msg)
+
+        assert len(mock_connection.errors) == 1
+        _, code, _ = mock_connection.errors[0]
+        assert code == ERR_STORAGE_ERROR
 
 
 class TestWsDeleteSession:
@@ -375,6 +470,30 @@ class TestWsDeleteSession:
         _, result = mock_connection.results[0]
         assert result == {"success": True}
 
+    @pytest.mark.asyncio
+    async def test_delete_session_storage_error(
+        self, hass: HomeAssistant, mock_connection: MockConnection
+    ) -> None:
+        """Test deleting session when storage raises exception."""
+        from custom_components.ai_agent_ha.websocket_api import _STORAGE_CACHE_PREFIX
+
+        mock_storage = MagicMock()
+        mock_storage.delete_session = AsyncMock(side_effect=Exception("Storage error"))
+
+        cache_key = f"{_STORAGE_CACHE_PREFIX}test_user_123"
+        hass.data[cache_key] = mock_storage
+
+        msg = {
+            "id": 1,
+            "type": "ai_agent_ha/sessions/delete",
+            "session_id": "12345678-1234-1234-1234-123456789012",
+        }
+        await ws_delete_session(hass, mock_connection, msg)
+
+        assert len(mock_connection.errors) == 1
+        _, code, _ = mock_connection.errors[0]
+        assert code == ERR_STORAGE_ERROR
+
 
 class TestWsRenameSession:
     """Tests for ws_rename_session command."""
@@ -422,6 +541,31 @@ class TestWsRenameSession:
         assert len(mock_connection.errors) == 1
         _, code, _ = mock_connection.errors[0]
         assert code == ERR_SESSION_NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_rename_session_storage_error(
+        self, hass: HomeAssistant, mock_connection: MockConnection
+    ) -> None:
+        """Test renaming session when storage raises exception."""
+        from custom_components.ai_agent_ha.websocket_api import _STORAGE_CACHE_PREFIX
+
+        mock_storage = MagicMock()
+        mock_storage.rename_session = AsyncMock(side_effect=Exception("Storage error"))
+
+        cache_key = f"{_STORAGE_CACHE_PREFIX}test_user_123"
+        hass.data[cache_key] = mock_storage
+
+        msg = {
+            "id": 1,
+            "type": "ai_agent_ha/sessions/rename",
+            "session_id": "12345678-1234-1234-1234-123456789012",
+            "title": "New Title",
+        }
+        await ws_rename_session(hass, mock_connection, msg)
+
+        assert len(mock_connection.errors) == 1
+        _, code, _ = mock_connection.errors[0]
+        assert code == ERR_STORAGE_ERROR
 
 
 class TestWsSendMessage:

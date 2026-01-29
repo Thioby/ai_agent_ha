@@ -37,6 +37,19 @@ from custom_components.ai_agent_ha.tools import (
     webfetch,
     websearch,
 )
+from custom_components.ai_agent_ha.tools.ha_native import (
+    GetEntityState,
+    GetEntitiesByDomain,
+    GetEntityRegistrySummary,
+    GetEntityRegistry,
+    CallService,
+    GetEntitiesByDeviceClass,
+    GetEntitiesByArea,
+    GetHistory,
+    GetStatistics,
+    GetAreaRegistry,
+    GetWeatherData,
+)
 
 
 class TestToolParameter:
@@ -991,3 +1004,388 @@ class TestToolsModuleConvenienceFunctions:
         # Both should return lists
         assert isinstance(tools_enabled, list)
         assert isinstance(tools_all, list)
+
+
+class TestHaNativeGetEntityState:
+    """Test GetEntityState tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetEntityState()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_missing_entity_id(self, tool):
+        """Test execute with missing entity_id."""
+        result = await tool.execute(entity_id="")
+
+        assert result.success is False
+        assert "entity" in result.error.lower() or "required" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_entity_not_found(self, tool, hass):
+        """Test execute with non-existent entity."""
+        result = await tool.execute(entity_id="light.nonexistent")
+
+        assert result.success is False
+        assert "not found" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_success(self, tool, hass):
+        """Test execute with valid entity."""
+        hass.states.async_set(
+            "light.living_room",
+            "on",
+            {"brightness": 255, "friendly_name": "Living Room Light"}
+        )
+
+        result = await tool.execute(entity_id="light.living_room")
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert data["entity_id"] == "light.living_room"
+        assert data["state"] == "on"
+        assert data["attributes"]["brightness"] == 255
+
+
+class TestHaNativeGetEntitiesByDomain:
+    """Test GetEntitiesByDomain tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetEntitiesByDomain()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_missing_domain(self, tool):
+        """Test execute with missing domain."""
+        result = await tool.execute(domain="")
+
+        assert result.success is False
+        assert "domain" in result.error.lower() or "required" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_empty_domain(self, tool, hass):
+        """Test execute with domain that has no entities."""
+        result = await tool.execute(domain="vacuum")
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert data == []
+
+    @pytest.mark.asyncio
+    async def test_execute_success(self, tool, hass):
+        """Test execute with valid domain."""
+        hass.states.async_set("light.one", "on", {"friendly_name": "Light One"})
+        hass.states.async_set("light.two", "off", {"friendly_name": "Light Two"})
+        hass.states.async_set("switch.other", "on", {})
+
+        result = await tool.execute(domain="light")
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert len(data) == 2
+        entity_ids = [e["entity_id"] for e in data]
+        assert "light.one" in entity_ids
+        assert "light.two" in entity_ids
+
+
+class TestHaNativeGetEntityRegistrySummary:
+    """Test GetEntityRegistrySummary tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetEntityRegistrySummary()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_empty_registry(self, tool, hass):
+        """Test execute with empty entity registry."""
+        result = await tool.execute()
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert "total_entities" in data
+        assert "by_domain" in data
+        assert "by_area" in data
+
+    @pytest.mark.asyncio
+    async def test_execute_with_entities(self, tool, hass):
+        """Test execute with entities in registry."""
+        hass.states.async_set("light.one", "on", {"device_class": "light"})
+        hass.states.async_set("sensor.temp", "23", {"device_class": "temperature"})
+
+        result = await tool.execute()
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert isinstance(data["by_domain"], dict)
+
+
+class TestHaNativeGetEntityRegistry:
+    """Test GetEntityRegistry tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetEntityRegistry()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_returns_placeholder(self, tool):
+        """Test execute returns placeholder response."""
+        result = await tool.execute(domain="light")
+
+        assert result.success is True
+        assert "agent handler" in result.output.lower()
+
+
+class TestHaNativeCallService:
+    """Test CallService tool.
+
+    Note: CallService is a schema-only definition that always returns success.
+    The actual service call logic is handled by agent.py.
+    """
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = CallService()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_returns_success(self, tool, hass):
+        """Test execute always returns success (schema-only tool)."""
+        # CallService is a placeholder tool, actual logic is in agent.py
+        result = await tool.execute(
+            domain="light",
+            service="turn_on",
+            target={"entity_id": "light.test"}
+        )
+
+        assert result.success is True
+        assert "agent logic" in result.output.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_with_service_data(self, tool, hass):
+        """Test service call with service_data."""
+        result = await tool.execute(
+            domain="light",
+            service="turn_on",
+            target={"entity_id": "light.test"},
+            service_data={"brightness": 128}
+        )
+
+        assert result.success is True
+
+
+class TestHaNativeGetEntitiesByDeviceClass:
+    """Test GetEntitiesByDeviceClass tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetEntitiesByDeviceClass()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_missing_device_class(self, tool):
+        """Test execute with missing device_class."""
+        result = await tool.execute(device_class="")
+
+        assert result.success is False
+        assert "device_class" in result.error.lower() or "missing" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_no_matching_entities(self, tool, hass):
+        """Test execute with device_class that has no entities."""
+        result = await tool.execute(device_class="power")
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert data == []
+
+    @pytest.mark.asyncio
+    async def test_execute_success(self, tool, hass):
+        """Test execute with valid device_class."""
+        hass.states.async_set("sensor.temp1", "22.5", {"device_class": "temperature"})
+        hass.states.async_set("sensor.temp2", "21.0", {"device_class": "temperature"})
+        hass.states.async_set("sensor.humidity", "45", {"device_class": "humidity"})
+
+        result = await tool.execute(device_class="temperature")
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert len(data) == 2
+        entity_ids = [e["entity_id"] for e in data]
+        assert "sensor.temp1" in entity_ids
+        assert "sensor.temp2" in entity_ids
+
+    @pytest.mark.asyncio
+    async def test_execute_with_domain_filter(self, tool, hass):
+        """Test execute with domain filter."""
+        hass.states.async_set("sensor.temp", "22.5", {"device_class": "temperature"})
+        hass.states.async_set("binary_sensor.motion", "on", {"device_class": "motion"})
+
+        result = await tool.execute(device_class="temperature", domain="sensor")
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["entity_id"] == "sensor.temp"
+
+
+class TestHaNativeGetEntitiesByArea:
+    """Test GetEntitiesByArea tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetEntitiesByArea()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_missing_area_id(self, tool):
+        """Test execute with missing area_id."""
+        result = await tool.execute(area_id="")
+
+        assert result.success is False
+        assert "area_id" in result.error.lower() or "missing" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_no_entities_in_area(self, tool, hass):
+        """Test execute with area that has no entities."""
+        result = await tool.execute(area_id="nonexistent_area")
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert data == []
+
+
+class TestHaNativeGetHistory:
+    """Test GetHistory tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetHistory()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_missing_entity_id(self, tool):
+        """Test execute with missing entity_id."""
+        result = await tool.execute(entity_id="")
+
+        assert result.success is False
+        assert "entity" in result.error.lower() or "required" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_no_recorder(self, tool, hass):
+        """Test execute when recorder is not available."""
+        # Without recorder integration, this should return an error
+        result = await tool.execute(entity_id="sensor.temperature", hours=24)
+
+        # Either success with empty data or error due to no recorder
+        assert result is not None
+
+
+class TestHaNativeGetStatistics:
+    """Test GetStatistics tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetStatistics()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_missing_entity_id(self, tool):
+        """Test execute with missing entity_id."""
+        result = await tool.execute(entity_id="")
+
+        assert result.success is False
+        assert "entity" in result.error.lower() or "missing" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_no_recorder(self, tool, hass):
+        """Test execute when recorder is not available."""
+        result = await tool.execute(entity_id="sensor.temperature")
+
+        # Should return error when recorder is not available
+        assert result.success is False
+        assert "recorder" in result.output.lower() or "recorder" in result.error.lower()
+
+
+class TestHaNativeGetAreaRegistry:
+    """Test GetAreaRegistry tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetAreaRegistry()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_success(self, tool, hass):
+        """Test execute returns area registry."""
+        result = await tool.execute()
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert isinstance(data, dict)
+
+
+class TestHaNativeGetWeatherData:
+    """Test GetWeatherData tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetWeatherData()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_no_weather_entities(self, tool, hass):
+        """Test execute with no weather entities."""
+        result = await tool.execute()
+
+        assert result.success is False
+        assert "weather" in result.output.lower() or "weather" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_with_weather_entity(self, tool, hass):
+        """Test execute with weather entity."""
+        hass.states.async_set(
+            "weather.home",
+            "sunny",
+            {
+                "temperature": 22,
+                "humidity": 45,
+                "pressure": 1013,
+                "wind_speed": 10,
+                "forecast": [
+                    {"datetime": "2024-01-01T12:00:00", "temperature": 23, "condition": "sunny"}
+                ]
+            }
+        )
+
+        result = await tool.execute()
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert "current" in data
+        assert data["current"]["temperature"] == 22

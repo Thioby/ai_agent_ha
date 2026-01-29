@@ -746,3 +746,162 @@ class TestAgentDataMethods:
 
         # Should return list even if empty
         assert isinstance(result, list)
+
+    @pytest.mark.asyncio
+    async def test_get_entities_by_area_empty_id(self, hass, agent_config):
+        """Test get_entities_by_area with empty area_id."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_entities_by_area("")
+
+        assert len(result) == 1
+        assert "error" in result[0]
+        assert "area_id is required" in result[0]["error"]
+
+    @pytest.mark.asyncio
+    async def test_get_entities_by_area_not_found(self, hass, agent_config):
+        """Test get_entities_by_area with non-existent area."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_entities_by_area("non_existent_area")
+
+        # Should return empty list when no entities in area
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_entities_no_area_provided(self, hass, agent_config):
+        """Test get_entities with no area provided."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_entities()
+
+        assert len(result) == 1
+        assert "error" in result[0]
+        assert "No area_id or area_ids provided" in result[0]["error"]
+
+    @pytest.mark.asyncio
+    async def test_get_entities_single_area(self, hass, agent_config):
+        """Test get_entities with single area_id."""
+        agent = AiAgentHaAgent(hass, agent_config)
+
+        # Mock get_entities_by_area to return test data
+        with patch.object(
+            agent, "get_entities_by_area", new=AsyncMock(
+                return_value=[{"entity_id": "light.living_room"}]
+            )
+        ):
+            result = await agent.get_entities(area_id="living_room")
+
+        assert len(result) == 1
+        assert result[0]["entity_id"] == "light.living_room"
+
+    @pytest.mark.asyncio
+    async def test_get_entities_multiple_areas(self, hass, agent_config):
+        """Test get_entities with multiple area_ids."""
+        agent = AiAgentHaAgent(hass, agent_config)
+
+        call_count = 0
+
+        async def mock_get_by_area(area_id):
+            nonlocal call_count
+            call_count += 1
+            if area_id == "living_room":
+                return [{"entity_id": "light.living_room"}]
+            elif area_id == "bedroom":
+                return [{"entity_id": "light.bedroom"}]
+            return []
+
+        with patch.object(agent, "get_entities_by_area", side_effect=mock_get_by_area):
+            result = await agent.get_entities(area_ids=["living_room", "bedroom"])
+
+        assert call_count == 2
+        assert len(result) == 2
+
+    @pytest.mark.asyncio
+    async def test_get_entities_removes_duplicates(self, hass, agent_config):
+        """Test get_entities removes duplicate entities."""
+        agent = AiAgentHaAgent(hass, agent_config)
+
+        async def mock_get_by_area(area_id):
+            # Return same entity from both areas
+            return [{"entity_id": "light.shared"}]
+
+        with patch.object(agent, "get_entities_by_area", side_effect=mock_get_by_area):
+            result = await agent.get_entities(area_ids=["area1", "area2"])
+
+        # Should deduplicate
+        assert len(result) == 1
+        assert result[0]["entity_id"] == "light.shared"
+
+    @pytest.mark.asyncio
+    async def test_get_calendar_events_specific_entity(self, hass, agent_config):
+        """Test get_calendar_events with specific entity_id."""
+        hass.states.async_set(
+            "calendar.work",
+            "on",
+            {"friendly_name": "Work Calendar"}
+        )
+
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_calendar_events(entity_id="calendar.work")
+
+        assert len(result) == 1
+        assert result[0]["entity_id"] == "calendar.work"
+
+    @pytest.mark.asyncio
+    async def test_get_calendar_events_all(self, hass, agent_config):
+        """Test get_calendar_events without entity_id returns all calendars."""
+        hass.states.async_set(
+            "calendar.work",
+            "on",
+            {"friendly_name": "Work Calendar"}
+        )
+        hass.states.async_set(
+            "calendar.personal",
+            "on",
+            {"friendly_name": "Personal Calendar"}
+        )
+
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_calendar_events()
+
+        assert len(result) == 2
+
+    @pytest.mark.asyncio
+    async def test_get_entity_state_valid_entity(self, hass, agent_config):
+        """Test get_entity_state with valid entity."""
+        hass.states.async_set(
+            "light.test",
+            "on",
+            {"brightness": 255, "friendly_name": "Test Light"}
+        )
+
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_entity_state("light.test")
+
+        assert result["entity_id"] == "light.test"
+        assert result["state"] == "on"
+        # Attributes are included in the result
+        assert result["friendly_name"] == "Test Light"
+
+    @pytest.mark.asyncio
+    async def test_get_entity_state_invalid_entity(self, hass, agent_config):
+        """Test get_entity_state with non-existent entity."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_entity_state("light.nonexistent")
+
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_get_entity_registry_pagination(self, hass, agent_config):
+        """Test get_entity_registry with pagination."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_entity_registry(limit=10, offset=0)
+
+        assert isinstance(result, dict)
+        assert "entities" in result or "error" in result
+
+    @pytest.mark.asyncio
+    async def test_get_entity_registry_domain_filter(self, hass, agent_config):
+        """Test get_entity_registry with domain filter."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_entity_registry(domain="light")
+
+        assert isinstance(result, dict)
