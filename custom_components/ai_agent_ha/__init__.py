@@ -13,7 +13,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
-from .agent import AiAgentHaAgent
+from .agent_compat import AiAgentHaAgent
 from .const import CONF_RAG_ENABLED, DEFAULT_RAG_ENABLED, DOMAIN
 from .websocket_api import async_register_websocket_commands
 
