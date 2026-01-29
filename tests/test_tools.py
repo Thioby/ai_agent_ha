@@ -13,15 +13,7 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import sys
-import os
-
-# Add parent directory to path for imports
-sys.path.insert(
-    0, os.path.join(os.path.dirname(__file__), "..", "custom_components", "ai_agent_ha")
-)
-
-from tools.base import (
+from custom_components.ai_agent_ha.tools.base import (
     Tool,
     ToolCategory,
     ToolExecutionError,
@@ -29,7 +21,7 @@ from tools.base import (
     ToolRegistry,
     ToolResult,
 )
-from tools.webfetch import (
+from custom_components.ai_agent_ha.tools.webfetch import (
     WebFetchTool,
     convert_html_to_markdown,
     extract_text_from_html,
@@ -38,7 +30,13 @@ from tools.webfetch import (
     DEFAULT_TIMEOUT,
     MAX_TIMEOUT,
 )
-from tools.websearch import WebSearchTool
+from custom_components.ai_agent_ha.tools.websearch import WebSearchTool
+from custom_components.ai_agent_ha.tools.context7 import Context7ResolveTool, Context7DocsTool
+from custom_components.ai_agent_ha.tools import (
+    context7,
+    webfetch,
+    websearch,
+)
 
 
 class TestToolParameter:
@@ -340,6 +338,7 @@ class TestWebFetchTool:
 
     def setup_method(self):
         """Setup test fixtures."""
+        ToolRegistry.register(WebFetchTool)
         self.tool = WebFetchTool()
 
     def test_tool_registration(self):
@@ -459,7 +458,7 @@ class TestWebFetchTool:
             result = await self.tool.execute(url="https://slow.example.com", timeout=1)
 
             assert result.success is False
-            assert "timeout" in result.error.lower()
+            assert "timed out" in result.error.lower()
 
     @pytest.mark.asyncio
     async def test_fetch_respects_max_size(self):
@@ -511,6 +510,7 @@ class TestWebSearchTool:
 
     def setup_method(self):
         """Setup test fixtures."""
+        ToolRegistry.register(WebSearchTool)
         self.tool = WebSearchTool()
 
     def test_tool_registration(self):
@@ -625,7 +625,7 @@ class TestWebSearchTool:
             result = await self.tool.execute(query="test")
 
             assert result.success is False
-            assert "timeout" in result.error.lower()
+            assert "timed out" in result.error.lower()
 
     def test_sse_parsing(self):
         """Test SSE response parsing."""
@@ -666,8 +666,14 @@ class TestToolSystemPrompt:
     def setup_method(self):
         """Clear and re-register tools."""
         ToolRegistry.clear()
-        # Re-import to trigger registration
-        from tools import webfetch, websearch
+        # Explicitly register known tools
+        ToolRegistry.register(WebFetchTool)
+        ToolRegistry.register(WebSearchTool)
+        # Import context7 to register those tools too (if they are not automatically registered by import)
+        from custom_components.ai_agent_ha.tools import context7
+        from custom_components.ai_agent_ha.tools.context7 import Context7ResolveTool, Context7DocsTool
+        ToolRegistry.register(Context7ResolveTool)
+        ToolRegistry.register(Context7DocsTool)
 
     def test_system_prompt_includes_tools(self):
         """Test that system prompt includes all tools."""
@@ -688,16 +694,22 @@ class TestToolSystemPrompt:
 class TestContext7Tools:
     """Tests for Context7 tools."""
 
+    def setup_method(self):
+        """Setup test fixtures."""
+        from custom_components.ai_agent_ha.tools.context7 import Context7ResolveTool, Context7DocsTool
+        ToolRegistry.register(Context7ResolveTool)
+        ToolRegistry.register(Context7DocsTool)
+
     def test_context7_resolve_registration(self):
         """Test that Context7ResolveTool is registered."""
-        from tools.context7 import Context7ResolveTool
+        from custom_components.ai_agent_ha.tools.context7 import Context7ResolveTool
 
         tool_class = ToolRegistry.get_tool_class("context7_resolve")
         assert tool_class is Context7ResolveTool
 
     def test_context7_docs_registration(self):
         """Test that Context7DocsTool is registered."""
-        from tools.context7 import Context7DocsTool
+        from custom_components.ai_agent_ha.tools.context7 import Context7DocsTool
 
         tool_class = ToolRegistry.get_tool_class("context7_docs")
         assert tool_class is Context7DocsTool
@@ -742,7 +754,7 @@ class TestContext7Tools:
     @pytest.mark.asyncio
     async def test_context7_resolve_success(self):
         """Test successful library resolution."""
-        from tools.context7 import Context7ResolveTool
+        from custom_components.ai_agent_ha.tools.context7 import Context7ResolveTool
 
         tool = Context7ResolveTool()
 
@@ -782,7 +794,7 @@ class TestContext7Tools:
     @pytest.mark.asyncio
     async def test_context7_docs_success(self):
         """Test successful documentation retrieval."""
-        from tools.context7 import Context7DocsTool
+        from custom_components.ai_agent_ha.tools.context7 import Context7DocsTool
 
         tool = Context7DocsTool()
 
@@ -825,7 +837,7 @@ class TestContext7Tools:
     @pytest.mark.asyncio
     async def test_context7_timeout(self):
         """Test timeout handling."""
-        from tools.context7 import Context7ResolveTool
+        from custom_components.ai_agent_ha.tools.context7 import Context7ResolveTool
 
         tool = Context7ResolveTool()
 
@@ -841,12 +853,12 @@ class TestContext7Tools:
             result = await tool.execute(library_name="react", query="hooks")
 
             assert result.success is False
-            assert "timeout" in result.error.lower()
+            assert "timed out" in result.error.lower()
 
     @pytest.mark.asyncio
     async def test_context7_api_error(self):
         """Test API error handling."""
-        from tools.context7 import Context7ResolveTool
+        from custom_components.ai_agent_ha.tools.context7 import Context7ResolveTool
 
         tool = Context7ResolveTool()
 
@@ -887,11 +899,95 @@ class TestContext7Tools:
     def test_context7_in_system_prompt(self):
         """Test that context7 tools appear in system prompt."""
         # Re-import to ensure registration
-        from tools import context7
+        from custom_components.ai_agent_ha.tools import context7
 
         prompt = ToolRegistry.get_system_prompt()
         assert "context7" in prompt.lower()
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+class TestToolsModuleConvenienceFunctions:
+    """Tests for convenience functions in tools/__init__.py."""
+
+    def setup_method(self):
+        """Clear and re-register tools."""
+        ToolRegistry.clear()
+        ToolRegistry.register(WebFetchTool)
+        ToolRegistry.register(WebSearchTool)
+
+    def test_get_tools_system_prompt(self):
+        """Test get_tools_system_prompt convenience function."""
+        from custom_components.ai_agent_ha.tools import get_tools_system_prompt
+
+        prompt = get_tools_system_prompt()
+        assert isinstance(prompt, str)
+        assert "web_fetch" in prompt or "fetch" in prompt.lower()
+
+    def test_get_tools_system_prompt_with_hass(self):
+        """Test get_tools_system_prompt with hass and config."""
+        from custom_components.ai_agent_ha.tools import get_tools_system_prompt
+
+        mock_hass = MagicMock()
+        mock_config = {"some_key": "some_value"}
+
+        prompt = get_tools_system_prompt(hass=mock_hass, config=mock_config)
+        assert isinstance(prompt, str)
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_function(self):
+        """Test execute_tool convenience function."""
+        from custom_components.ai_agent_ha.tools import execute_tool
+
+        # Register a simple test tool
+        @ToolRegistry.register
+        class SimpleTool(Tool):
+            id = "simple_test"
+            description = "Simple test tool"
+            parameters = [
+                ToolParameter(name="value", type="string", description="Value", required=True)
+            ]
+
+            async def execute(self, value: str, **params):
+                return ToolResult(output=f"Got: {value}", metadata={})
+
+        result = await execute_tool("simple_test", {"value": "hello"})
+        assert result.output == "Got: hello"
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_with_hass_config(self):
+        """Test execute_tool with hass and config."""
+        from custom_components.ai_agent_ha.tools import execute_tool
+
+        @ToolRegistry.register
+        class ConfigTool(Tool):
+            id = "config_test"
+            description = "Config test tool"
+
+            async def execute(self, **params):
+                return ToolResult(output="executed", metadata={})
+
+        mock_hass = MagicMock()
+        result = await execute_tool("config_test", {}, hass=mock_hass, config={"key": "val"})
+        assert result.success is True
+
+    def test_list_tools_function(self):
+        """Test list_tools convenience function."""
+        from custom_components.ai_agent_ha.tools import list_tools
+
+        tools = list_tools()
+        assert isinstance(tools, list)
+        assert len(tools) >= 2  # At least web_fetch and web_search
+
+        ids = [t["id"] for t in tools]
+        assert "web_fetch" in ids
+        assert "web_search" in ids
+
+    def test_list_tools_enabled_only(self):
+        """Test list_tools with enabled_only parameter."""
+        from custom_components.ai_agent_ha.tools import list_tools
+
+        tools_enabled = list_tools(enabled_only=True)
+        tools_all = list_tools(enabled_only=False)
+
+        # Both should return lists
+        assert isinstance(tools_enabled, list)
+        assert isinstance(tools_all, list)

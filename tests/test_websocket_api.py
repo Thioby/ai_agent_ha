@@ -2,46 +2,49 @@
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
-from types import ModuleType
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import voluptuous as vol
+
+from homeassistant.core import HomeAssistant
+from homeassistant.components import websocket_api
+
+from custom_components.ai_agent_ha.const import DOMAIN, VALID_PROVIDERS
+from custom_components.ai_agent_ha.storage import Message, SessionStorage
+from custom_components.ai_agent_ha.websocket_api import (
+    ERR_SESSION_NOT_FOUND,
+    ERR_STORAGE_ERROR,
+    ws_create_session,
+    ws_delete_session,
+    ws_get_session,
+    ws_list_sessions,
+    ws_rename_session,
+    ws_send_message,
+    _get_user_id,
+    _validate_session_id,
+    _validate_title,
+    _validate_message,
+    MAX_TITLE_LENGTH,
+)
+from custom_components.ai_agent_ha.storage import MAX_MESSAGE_LENGTH
 
 
-# ============================================================================
-# Mock Home Assistant dependencies
-# ============================================================================
-
-
-class MockStore:
-    """Mock Home Assistant Store for testing."""
-
-    _stores: dict[str, "MockStore"] = {}
-
-    def __init__(self, hass: Any, version: int, key: str) -> None:
-        self.hass = hass
-        self.version = version
-        self.key = key
-        if key in MockStore._stores:
-            self._data = MockStore._stores[key]._data
-        else:
-            self._data: dict[str, Any] | None = None
-        MockStore._stores[key] = self
-
-    async def async_load(self) -> dict[str, Any] | None:
-        return self._data
-
-    async def async_save(self, data: dict[str, Any]) -> None:
-        self._data = data
-
-    @classmethod
-    def reset_stores(cls) -> None:
-        cls._stores.clear()
+# Unwrap decorated functions for testing
+if hasattr(ws_list_sessions, "__wrapped__"):
+    ws_list_sessions = ws_list_sessions.__wrapped__
+if hasattr(ws_get_session, "__wrapped__"):
+    ws_get_session = ws_get_session.__wrapped__
+if hasattr(ws_create_session, "__wrapped__"):
+    ws_create_session = ws_create_session.__wrapped__
+if hasattr(ws_delete_session, "__wrapped__"):
+    ws_delete_session = ws_delete_session.__wrapped__
+if hasattr(ws_rename_session, "__wrapped__"):
+    ws_rename_session = ws_rename_session.__wrapped__
+if hasattr(ws_send_message, "__wrapped__"):
+    ws_send_message = ws_send_message.__wrapped__
 
 
 class MockUser:
@@ -66,154 +69,6 @@ class MockConnection:
         self.errors.append((msg_id, code, message))
 
 
-def _setup_homeassistant_mocks() -> dict[str, Any]:
-    """Set up mock modules for Home Assistant."""
-
-    def _create_mock_module(name: str) -> ModuleType:
-        mod = ModuleType(name)
-        mod.__path__ = []
-        return mod
-
-    mocks = {
-        "homeassistant": _create_mock_module("homeassistant"),
-        "homeassistant.core": _create_mock_module("homeassistant.core"),
-        "homeassistant.helpers": _create_mock_module("homeassistant.helpers"),
-        "homeassistant.helpers.storage": _create_mock_module(
-            "homeassistant.helpers.storage"
-        ),
-        "homeassistant.components": _create_mock_module("homeassistant.components"),
-        "homeassistant.components.websocket_api": _create_mock_module(
-            "homeassistant.components.websocket_api"
-        ),
-        "homeassistant.exceptions": _create_mock_module("homeassistant.exceptions"),
-        "voluptuous": MagicMock(),
-    }
-
-    # Add Store class
-    setattr(mocks["homeassistant.helpers.storage"], "Store", MockStore)
-
-    # Add HomeAssistant mock
-    setattr(mocks["homeassistant.core"], "HomeAssistant", MagicMock)
-
-    # Add HomeAssistantError
-    class HomeAssistantError(Exception):
-        pass
-
-    setattr(mocks["homeassistant.exceptions"], "HomeAssistantError", HomeAssistantError)
-
-    # Add websocket_api decorators and classes
-    ws_api_mock = mocks["homeassistant.components.websocket_api"]
-
-    def websocket_command(schema: dict) -> Any:
-        def decorator(func: Any) -> Any:
-            func._ws_schema = schema
-            return func
-
-        return decorator
-
-    def async_response(func: Any) -> Any:
-        return func
-
-    def async_register_command(hass: Any, handler: Any) -> None:
-        pass
-
-    setattr(ws_api_mock, "websocket_command", websocket_command)
-    setattr(ws_api_mock, "async_response", async_response)
-    setattr(ws_api_mock, "async_register_command", async_register_command)
-    setattr(ws_api_mock, "ActiveConnection", MockConnection)
-
-    for name, mock in mocks.items():
-        sys.modules[name] = mock
-
-    return mocks
-
-
-_mocks = _setup_homeassistant_mocks()
-
-
-def _import_modules():
-    """Import modules directly without going through __init__.py."""
-    base_path = Path(__file__).parent.parent / "custom_components" / "ai_agent_ha"
-
-    # Import const first
-    const_path = base_path / "const.py"
-    spec = importlib.util.spec_from_file_location("const", const_path)
-    const_module = importlib.util.module_from_spec(spec)
-    sys.modules["const"] = const_module
-    spec.loader.exec_module(const_module)
-
-    # Import storage
-    storage_path = base_path / "storage.py"
-    spec = importlib.util.spec_from_file_location("storage", storage_path)
-    storage_module = importlib.util.module_from_spec(spec)
-    sys.modules["storage"] = storage_module
-    spec.loader.exec_module(storage_module)
-
-    # Read and modify websocket_api source to use absolute imports
-    ws_path = base_path / "websocket_api.py"
-    with open(ws_path) as f:
-        ws_source = f.read()
-
-    # Replace relative imports with our mock modules
-    ws_source = ws_source.replace(
-        "from .const import DOMAIN, VALID_PROVIDERS",
-        "from const import DOMAIN, VALID_PROVIDERS",
-    )
-    ws_source = ws_source.replace(
-        "from .storage import MAX_MESSAGE_LENGTH, Message, SessionStorage",
-        "from storage import MAX_MESSAGE_LENGTH, Message, SessionStorage",
-    )
-
-    # Execute modified source
-    ws_module = ModuleType("websocket_api")
-    ws_module.__file__ = str(ws_path)
-    sys.modules["websocket_api"] = ws_module
-    exec(compile(ws_source, ws_path, "exec"), ws_module.__dict__)
-
-    return const_module, storage_module, ws_module
-
-
-_const, _storage, _ws_api = _import_modules()
-
-# Export what we need
-DOMAIN = _const.DOMAIN
-VALID_PROVIDERS = _const.VALID_PROVIDERS
-SessionStorage = _storage.SessionStorage
-Message = _storage.Message
-
-ws_list_sessions = _ws_api.ws_list_sessions
-ws_get_session = _ws_api.ws_get_session
-ws_create_session = _ws_api.ws_create_session
-ws_delete_session = _ws_api.ws_delete_session
-ws_rename_session = _ws_api.ws_rename_session
-ws_send_message = _ws_api.ws_send_message
-_get_user_id = _ws_api._get_user_id
-
-ERR_SESSION_NOT_FOUND = _ws_api.ERR_SESSION_NOT_FOUND
-ERR_STORAGE_ERROR = _ws_api.ERR_STORAGE_ERROR
-
-
-# ============================================================================
-# Test Fixtures
-# ============================================================================
-
-
-@pytest.fixture(autouse=True)
-def reset_stores():
-    """Reset mock stores before each test."""
-    MockStore.reset_stores()
-    yield
-    MockStore.reset_stores()
-
-
-@pytest.fixture
-def mock_hass() -> MagicMock:
-    """Create a mock Home Assistant instance."""
-    hass = MagicMock()
-    hass.data = {}
-    return hass
-
-
 @pytest.fixture
 def mock_connection() -> MockConnection:
     """Create a mock WebSocket connection."""
@@ -226,11 +81,6 @@ def mock_connection_no_user() -> MockConnection:
     conn = MockConnection()
     conn.user = None
     return conn
-
-
-# ============================================================================
-# Test Cases
-# ============================================================================
 
 
 class TestGetUserId:
@@ -255,17 +105,112 @@ class TestGetUserId:
         assert user_id == "default"
 
 
+class TestValidateSessionId:
+    """Tests for _validate_session_id helper."""
+
+    def test_valid_uuid(self) -> None:
+        """Test valid UUID format."""
+        valid_uuid = "123e4567-e89b-12d3-a456-426614174000"
+        result = _validate_session_id(valid_uuid)
+        assert result == valid_uuid
+
+    def test_valid_uuid_uppercase(self) -> None:
+        """Test valid UUID with uppercase letters."""
+        valid_uuid = "123E4567-E89B-12D3-A456-426614174000"
+        result = _validate_session_id(valid_uuid)
+        assert result == valid_uuid
+
+    def test_invalid_uuid_format(self) -> None:
+        """Test invalid UUID format raises error."""
+        with pytest.raises(vol.Invalid) as exc_info:
+            _validate_session_id("not-a-uuid")
+        assert "valid UUID" in str(exc_info.value)
+
+    def test_not_a_string(self) -> None:
+        """Test non-string value raises error."""
+        with pytest.raises(vol.Invalid) as exc_info:
+            _validate_session_id(12345)
+        assert "must be a string" in str(exc_info.value)
+
+    def test_empty_string(self) -> None:
+        """Test empty string raises error."""
+        with pytest.raises(vol.Invalid) as exc_info:
+            _validate_session_id("")
+        assert "valid UUID" in str(exc_info.value)
+
+
+class TestValidateTitle:
+    """Tests for _validate_title helper."""
+
+    def test_valid_title(self) -> None:
+        """Test valid title."""
+        result = _validate_title("My Session Title")
+        assert result == "My Session Title"
+
+    def test_truncates_long_title(self) -> None:
+        """Test that long titles are truncated."""
+        long_title = "A" * (MAX_TITLE_LENGTH + 50)
+        result = _validate_title(long_title)
+        assert len(result) == MAX_TITLE_LENGTH
+
+    def test_not_a_string(self) -> None:
+        """Test non-string value raises error."""
+        with pytest.raises(vol.Invalid) as exc_info:
+            _validate_title(12345)
+        assert "must be a string" in str(exc_info.value)
+
+    def test_empty_string(self) -> None:
+        """Test empty string raises error."""
+        with pytest.raises(vol.Invalid) as exc_info:
+            _validate_title("")
+        assert "cannot be empty" in str(exc_info.value)
+
+
+class TestValidateMessage:
+    """Tests for _validate_message helper."""
+
+    def test_valid_message(self) -> None:
+        """Test valid message."""
+        result = _validate_message("Hello, this is a test message")
+        assert result == "Hello, this is a test message"
+
+    def test_not_a_string(self) -> None:
+        """Test non-string value raises error."""
+        with pytest.raises(vol.Invalid) as exc_info:
+            _validate_message(12345)
+        assert "must be a string" in str(exc_info.value)
+
+    def test_empty_string(self) -> None:
+        """Test empty string raises error."""
+        with pytest.raises(vol.Invalid) as exc_info:
+            _validate_message("")
+        assert "cannot be empty" in str(exc_info.value)
+
+    def test_exceeds_max_length(self) -> None:
+        """Test message exceeding max length raises error."""
+        long_message = "A" * (MAX_MESSAGE_LENGTH + 1)
+        with pytest.raises(vol.Invalid) as exc_info:
+            _validate_message(long_message)
+        assert "exceeds maximum length" in str(exc_info.value)
+
+    def test_at_max_length(self) -> None:
+        """Test message at exactly max length is valid."""
+        max_message = "A" * MAX_MESSAGE_LENGTH
+        result = _validate_message(max_message)
+        assert len(result) == MAX_MESSAGE_LENGTH
+
+
 class TestWsListSessions:
     """Tests for ws_list_sessions command."""
 
     @pytest.mark.asyncio
     async def test_list_sessions_empty(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test listing sessions when none exist."""
         msg = {"id": 1, "type": "ai_agent_ha/sessions/list"}
 
-        await ws_list_sessions(mock_hass, mock_connection, msg)
+        await ws_list_sessions(hass, mock_connection, msg)
 
         assert len(mock_connection.results) == 1
         msg_id, result = mock_connection.results[0]
@@ -274,16 +219,16 @@ class TestWsListSessions:
 
     @pytest.mark.asyncio
     async def test_list_sessions_with_data(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test listing sessions with existing data."""
         # Create some sessions first
-        storage = SessionStorage(mock_hass, "test_user_123")
+        storage = SessionStorage(hass, "test_user_123")
         await storage.create_session(provider="anthropic", title="Session 1")
         await storage.create_session(provider="openai", title="Session 2")
 
         msg = {"id": 2, "type": "ai_agent_ha/sessions/list"}
-        await ws_list_sessions(mock_hass, mock_connection, msg)
+        await ws_list_sessions(hass, mock_connection, msg)
 
         assert len(mock_connection.results) == 1
         msg_id, result = mock_connection.results[0]
@@ -297,10 +242,10 @@ class TestWsGetSession:
 
     @pytest.mark.asyncio
     async def test_get_session_success(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test getting a session with messages."""
-        storage = SessionStorage(mock_hass, "test_user_123")
+        storage = SessionStorage(hass, "test_user_123")
         session = await storage.create_session(provider="anthropic", title="Test")
         message = Message(
             message_id="msg-1",
@@ -316,7 +261,7 @@ class TestWsGetSession:
             "type": "ai_agent_ha/sessions/get",
             "session_id": session.session_id,
         }
-        await ws_get_session(mock_hass, mock_connection, msg)
+        await ws_get_session(hass, mock_connection, msg)
 
         assert len(mock_connection.results) == 1
         msg_id, result = mock_connection.results[0]
@@ -327,7 +272,7 @@ class TestWsGetSession:
 
     @pytest.mark.asyncio
     async def test_get_session_not_found(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test getting a non-existent session."""
         msg = {
@@ -335,7 +280,7 @@ class TestWsGetSession:
             "type": "ai_agent_ha/sessions/get",
             "session_id": "non-existent",
         }
-        await ws_get_session(mock_hass, mock_connection, msg)
+        await ws_get_session(hass, mock_connection, msg)
 
         assert len(mock_connection.errors) == 1
         msg_id, code, message = mock_connection.errors[0]
@@ -348,7 +293,7 @@ class TestWsCreateSession:
 
     @pytest.mark.asyncio
     async def test_create_session_success(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test creating a new session."""
         msg = {
@@ -356,7 +301,7 @@ class TestWsCreateSession:
             "type": "ai_agent_ha/sessions/create",
             "provider": "anthropic",
         }
-        await ws_create_session(mock_hass, mock_connection, msg)
+        await ws_create_session(hass, mock_connection, msg)
 
         assert len(mock_connection.results) == 1
         msg_id, result = mock_connection.results[0]
@@ -367,7 +312,7 @@ class TestWsCreateSession:
 
     @pytest.mark.asyncio
     async def test_create_session_with_title(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test creating a session with custom title."""
         msg = {
@@ -376,7 +321,7 @@ class TestWsCreateSession:
             "provider": "openai",
             "title": "My Custom Chat",
         }
-        await ws_create_session(mock_hass, mock_connection, msg)
+        await ws_create_session(hass, mock_connection, msg)
 
         assert len(mock_connection.results) == 1
         _, result = mock_connection.results[0]
@@ -388,10 +333,13 @@ class TestWsDeleteSession:
 
     @pytest.mark.asyncio
     async def test_delete_session_success(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test deleting an existing session."""
-        storage = SessionStorage(mock_hass, "test_user_123")
+        storage = SessionStorage(hass, "test_user_123")
+        # Ensure websocket handler uses the same storage instance
+        hass.data[f"{DOMAIN}_storage_test_user_123"] = storage
+        
         session = await storage.create_session(provider="anthropic")
 
         msg = {
@@ -399,19 +347,20 @@ class TestWsDeleteSession:
             "type": "ai_agent_ha/sessions/delete",
             "session_id": session.session_id,
         }
-        await ws_delete_session(mock_hass, mock_connection, msg)
+        await ws_delete_session(hass, mock_connection, msg)
 
         assert len(mock_connection.results) == 1
         _, result = mock_connection.results[0]
         assert result == {"success": True}
 
         # Verify session is deleted
+        # Force reload to be sure, though sharing instance should handle it if _save updates _data correctly (which it does)
         sessions = await storage.list_sessions()
         assert len(sessions) == 0
 
     @pytest.mark.asyncio
     async def test_delete_session_not_found(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test deleting a non-existent session (should succeed silently)."""
         msg = {
@@ -419,7 +368,7 @@ class TestWsDeleteSession:
             "type": "ai_agent_ha/sessions/delete",
             "session_id": "non-existent",
         }
-        await ws_delete_session(mock_hass, mock_connection, msg)
+        await ws_delete_session(hass, mock_connection, msg)
 
         # Should still return success
         assert len(mock_connection.results) == 1
@@ -432,10 +381,13 @@ class TestWsRenameSession:
 
     @pytest.mark.asyncio
     async def test_rename_session_success(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test renaming an existing session."""
-        storage = SessionStorage(mock_hass, "test_user_123")
+        storage = SessionStorage(hass, "test_user_123")
+        # Ensure websocket handler uses the same storage instance
+        hass.data[f"{DOMAIN}_storage_test_user_123"] = storage
+        
         session = await storage.create_session(provider="anthropic")
 
         msg = {
@@ -444,7 +396,7 @@ class TestWsRenameSession:
             "session_id": session.session_id,
             "title": "Renamed Session",
         }
-        await ws_rename_session(mock_hass, mock_connection, msg)
+        await ws_rename_session(hass, mock_connection, msg)
 
         assert len(mock_connection.results) == 1
         _, result = mock_connection.results[0]
@@ -456,7 +408,7 @@ class TestWsRenameSession:
 
     @pytest.mark.asyncio
     async def test_rename_session_not_found(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test renaming a non-existent session."""
         msg = {
@@ -465,7 +417,7 @@ class TestWsRenameSession:
             "session_id": "non-existent",
             "title": "New Title",
         }
-        await ws_rename_session(mock_hass, mock_connection, msg)
+        await ws_rename_session(hass, mock_connection, msg)
 
         assert len(mock_connection.errors) == 1
         _, code, _ = mock_connection.errors[0]
@@ -477,11 +429,11 @@ class TestWsSendMessage:
 
     @pytest.mark.asyncio
     async def test_send_message_success(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test sending a message with successful AI response."""
         # Set up session
-        storage = SessionStorage(mock_hass, "test_user_123")
+        storage = SessionStorage(hass, "test_user_123")
         session = await storage.create_session(provider="anthropic")
 
         # Set up mock AI agent
@@ -495,10 +447,8 @@ class TestWsSendMessage:
                 "debug": None,
             }
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "agents": {"anthropic": mock_agent},
-            }
+        hass.data[DOMAIN] = {
+            "agents": {"anthropic": mock_agent},
         }
 
         msg = {
@@ -507,7 +457,7 @@ class TestWsSendMessage:
             "session_id": session.session_id,
             "message": "Hello, AI!",
         }
-        await ws_send_message(mock_hass, mock_connection, msg)
+        await ws_send_message(hass, mock_connection, msg)
 
         assert len(mock_connection.results) == 1
         _, result = mock_connection.results[0]
@@ -520,19 +470,17 @@ class TestWsSendMessage:
 
     @pytest.mark.asyncio
     async def test_send_message_ai_error(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test sending a message when AI returns error."""
-        storage = SessionStorage(mock_hass, "test_user_123")
+        storage = SessionStorage(hass, "test_user_123")
         session = await storage.create_session(provider="anthropic")
 
         # Set up mock AI agent that raises error
         mock_agent = AsyncMock()
         mock_agent.process_query = AsyncMock(side_effect=Exception("AI service down"))
-        mock_hass.data = {
-            DOMAIN: {
-                "agents": {"anthropic": mock_agent},
-            }
+        hass.data[DOMAIN] = {
+            "agents": {"anthropic": mock_agent},
         }
 
         msg = {
@@ -541,7 +489,7 @@ class TestWsSendMessage:
             "session_id": session.session_id,
             "message": "Hello",
         }
-        await ws_send_message(mock_hass, mock_connection, msg)
+        await ws_send_message(hass, mock_connection, msg)
 
         assert len(mock_connection.results) == 1
         _, result = mock_connection.results[0]
@@ -552,14 +500,15 @@ class TestWsSendMessage:
 
     @pytest.mark.asyncio
     async def test_send_message_provider_not_configured(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test sending message when provider is not configured."""
-        storage = SessionStorage(mock_hass, "test_user_123")
+        storage = SessionStorage(hass, "test_user_123")
         session = await storage.create_session(provider="anthropic")
 
         # No agents configured
-        mock_hass.data = {}
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN]["agents"] = {}
 
         msg = {
             "id": 1,
@@ -567,7 +516,7 @@ class TestWsSendMessage:
             "session_id": session.session_id,
             "message": "Hello",
         }
-        await ws_send_message(mock_hass, mock_connection, msg)
+        await ws_send_message(hass, mock_connection, msg)
 
         assert len(mock_connection.results) == 1
         _, result = mock_connection.results[0]
@@ -577,7 +526,7 @@ class TestWsSendMessage:
 
     @pytest.mark.asyncio
     async def test_send_message_session_not_found(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test sending message to non-existent session."""
         msg = {
@@ -586,7 +535,7 @@ class TestWsSendMessage:
             "session_id": "non-existent",
             "message": "Hello",
         }
-        await ws_send_message(mock_hass, mock_connection, msg)
+        await ws_send_message(hass, mock_connection, msg)
 
         assert len(mock_connection.errors) == 1
         _, code, _ = mock_connection.errors[0]
@@ -594,10 +543,10 @@ class TestWsSendMessage:
 
     @pytest.mark.asyncio
     async def test_send_message_with_conversation_history(
-        self, mock_hass: MagicMock, mock_connection: MockConnection
+        self, hass: HomeAssistant, mock_connection: MockConnection
     ) -> None:
         """Test that conversation history is passed to AI."""
-        storage = SessionStorage(mock_hass, "test_user_123")
+        storage = SessionStorage(hass, "test_user_123")
         session = await storage.create_session(provider="anthropic")
 
         # Add existing messages
@@ -623,7 +572,7 @@ class TestWsSendMessage:
         mock_agent.process_query = AsyncMock(
             return_value={"answer": "Lights turned off"}
         )
-        mock_hass.data = {DOMAIN: {"agents": {"anthropic": mock_agent}}}
+        hass.data[DOMAIN] = {"agents": {"anthropic": mock_agent}}
 
         msg = {
             "id": 1,
@@ -631,7 +580,7 @@ class TestWsSendMessage:
             "session_id": session.session_id,
             "message": "Now turn them off",
         }
-        await ws_send_message(mock_hass, mock_connection, msg)
+        await ws_send_message(hass, mock_connection, msg)
 
         # Verify conversation history was passed
         call_kwargs = mock_agent.process_query.call_args.kwargs
@@ -646,24 +595,24 @@ class TestUserIsolation:
     """Tests for user isolation in WebSocket API."""
 
     @pytest.mark.asyncio
-    async def test_users_see_only_their_sessions(self, mock_hass: MagicMock) -> None:
+    async def test_users_see_only_their_sessions(self, hass: HomeAssistant) -> None:
         """Test that users can only see their own sessions."""
         # Create sessions for user A
         conn_a = MockConnection(MockUser("user_a"))
-        storage_a = SessionStorage(mock_hass, "user_a")
+        storage_a = SessionStorage(hass, "user_a")
         await storage_a.create_session(provider="anthropic", title="A's session")
 
         # Create sessions for user B
         conn_b = MockConnection(MockUser("user_b"))
-        storage_b = SessionStorage(mock_hass, "user_b")
+        storage_b = SessionStorage(hass, "user_b")
         await storage_b.create_session(provider="anthropic", title="B's session")
 
         # User A lists sessions
-        await ws_list_sessions(mock_hass, conn_a, {"id": 1, "type": "..."})
+        await ws_list_sessions(hass, conn_a, {"id": 1, "type": "..."})
         _, result_a = conn_a.results[0]
 
         # User B lists sessions
-        await ws_list_sessions(mock_hass, conn_b, {"id": 1, "type": "..."})
+        await ws_list_sessions(hass, conn_b, {"id": 1, "type": "..."})
         _, result_b = conn_b.results[0]
 
         assert len(result_a["sessions"]) == 1
