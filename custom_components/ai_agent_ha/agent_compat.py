@@ -65,7 +65,11 @@ class AiAgentHaAgent:
             )
 
     def _get_base_provider_name(self) -> str:
-        """Map OAuth provider names to base provider names."""
+        """Map OAuth provider names to base provider names.
+
+        Note: gemini_oauth is now a registered provider, so it doesn't fall back,
+        but we still need the mapping for model/token lookups.
+        """
         mapping = {
             "anthropic_oauth": "anthropic",
             "gemini_oauth": "gemini",
@@ -78,7 +82,10 @@ class AiAgentHaAgent:
         provider = self._provider_name
         base_provider = self._get_base_provider_name()
 
-        # Get token for this provider
+        # OAuth providers use config_entry for tokens
+        is_oauth_provider = provider.endswith("_oauth")
+
+        # Get token for this provider (API key providers)
         token_keys = {
             "openai": "openai_token",
             "gemini": "gemini_token",
@@ -93,20 +100,34 @@ class AiAgentHaAgent:
 
         # Get model for this provider
         models = self.config.get("models", {})
-        model = models.get(base_provider, self._get_default_model(base_provider))
 
-        return {
+        # For OAuth providers, try provider name first (e.g., gemini_oauth),
+        # then fall back to base provider (e.g., gemini)
+        if is_oauth_provider:
+            model = models.get(provider, models.get(base_provider, self._get_default_model(provider)))
+        else:
+            model = models.get(provider, self._get_default_model(provider))
+
+        config: dict[str, Any] = {
             "token": token,
             "model": model,
             "api_url": self.config.get(f"{base_provider}_api_url"),
         }
+
+        # OAuth providers need config_entry for token management
+        if is_oauth_provider and self.config_entry:
+            config["config_entry"] = self.config_entry
+
+        return config
 
     def _get_default_model(self, provider: str) -> str:
         """Get default model for provider."""
         defaults = {
             "openai": "gpt-4",
             "gemini": "gemini-2.5-flash",
+            "gemini_oauth": "gemini-3-pro-preview",
             "anthropic": "claude-sonnet-4-5-20250929",
+            "anthropic_oauth": "claude-sonnet-4-5-20250929",
             "groq": "llama-3.3-70b-versatile",
             "openrouter": "openai/gpt-4",
             "local": "llama2",

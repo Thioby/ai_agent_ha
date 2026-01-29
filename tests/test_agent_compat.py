@@ -216,6 +216,7 @@ class TestAiAgentHaAgentCompat:
         agent._provider_name = "anthropic_oauth"
         assert agent._get_base_provider_name() == "anthropic"
 
+        # gemini_oauth maps to gemini for model/token lookups
         agent._provider_name = "gemini_oauth"
         assert agent._get_base_provider_name() == "gemini"
 
@@ -231,7 +232,9 @@ class TestAiAgentHaAgentCompat:
 
         assert agent._get_default_model("openai") == "gpt-4"
         assert agent._get_default_model("anthropic") == "claude-sonnet-4-5-20250929"
+        assert agent._get_default_model("anthropic_oauth") == "claude-sonnet-4-5-20250929"
         assert agent._get_default_model("gemini") == "gemini-2.5-flash"
+        assert agent._get_default_model("gemini_oauth") == "gemini-3-pro-preview"
         assert agent._get_default_model("groq") == "llama-3.3-70b-versatile"
         assert agent._get_default_model("unknown") == "gpt-4"
 
@@ -260,3 +263,66 @@ class TestAiAgentHaAgentCompat:
         assert agent._provider == mock_provider
         # Should have been called twice: once for anthropic_oauth, once for anthropic
         assert mock_registry.create.call_count == 2
+
+    @patch("custom_components.ai_agent_ha.agent_compat.ProviderRegistry")
+    def test_gemini_oauth_uses_registered_provider(self, mock_registry, patch_managers, mock_hass, config):
+        """Test gemini_oauth uses the registered provider directly (no fallback)."""
+        mock_provider = MagicMock()
+        mock_registry.create.return_value = mock_provider
+
+        config["ai_provider"] = "gemini_oauth"
+        config_entry = MagicMock()
+        agent = AiAgentHaAgent(mock_hass, config, config_entry)
+
+        assert agent._provider == mock_provider
+        # Should only be called once (no fallback needed)
+        assert mock_registry.create.call_count == 1
+        # Verify the call args
+        call_args = mock_registry.create.call_args
+        assert call_args[0][0] == "gemini_oauth"
+        assert call_args[0][1] == mock_hass
+        provider_config = call_args[0][2]
+        assert provider_config["model"] == "gemini-3-pro-preview"
+        assert provider_config["config_entry"] == config_entry
+
+    @patch("custom_components.ai_agent_ha.agent_compat.ProviderRegistry")
+    def test_build_provider_config_includes_config_entry_for_oauth(self, mock_registry, patch_managers, mock_hass, config):
+        """Test that OAuth providers include config_entry in config."""
+        mock_registry.create.return_value = MagicMock()
+        config_entry = MagicMock()
+
+        config["ai_provider"] = "gemini_oauth"
+        agent = AiAgentHaAgent(mock_hass, config, config_entry)
+
+        provider_config = agent._build_provider_config()
+        assert provider_config["config_entry"] == config_entry
+
+    @patch("custom_components.ai_agent_ha.agent_compat.ProviderRegistry")
+    def test_build_provider_config_no_config_entry_for_api_key_provider(self, mock_registry, patch_managers, mock_hass, config):
+        """Test that API key providers don't include config_entry in config."""
+        mock_registry.create.return_value = MagicMock()
+
+        agent = AiAgentHaAgent(mock_hass, config)
+
+        provider_config = agent._build_provider_config()
+        assert "config_entry" not in provider_config
+
+    @patch("custom_components.ai_agent_ha.agent_compat.ProviderRegistry")
+    def test_anthropic_oauth_uses_registered_provider(self, mock_registry, patch_managers, mock_hass, config):
+        """Test anthropic_oauth uses the registered provider directly."""
+        mock_provider = MagicMock()
+        mock_registry.create.return_value = mock_provider
+
+        config["ai_provider"] = "anthropic_oauth"
+        config_entry = MagicMock()
+        agent = AiAgentHaAgent(mock_hass, config, config_entry)
+
+        assert agent._provider == mock_provider
+        # Should only be called once (no fallback needed)
+        assert mock_registry.create.call_count == 1
+        # Verify the call args
+        call_args = mock_registry.create.call_args
+        assert call_args[0][0] == "anthropic_oauth"
+        provider_config = call_args[0][2]
+        assert provider_config["model"] == "claude-sonnet-4-5-20250929"
+        assert provider_config["config_entry"] == config_entry
