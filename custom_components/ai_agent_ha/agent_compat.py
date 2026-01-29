@@ -154,6 +154,37 @@ class AiAgentHaAgent:
 
     # === PUBLIC API (same signatures as old agent) ===
 
+    def _get_tools_for_provider(self) -> list[dict[str, Any]] | None:
+        """Get tools in OpenAI format for the current provider.
+
+        Returns:
+            List of tools in OpenAI format, or None if provider doesn't support tools.
+        """
+        if not self._provider.supports_tools:
+            return None
+
+        try:
+            from .tools import ToolRegistry
+            from .function_calling import ToolSchemaConverter
+
+            tools = ToolRegistry.get_all_tools(
+                hass=self.hass,
+                config=self.config,
+                enabled_only=True,
+            )
+
+            if not tools:
+                _LOGGER.debug("No tools available for native function calling")
+                return None
+
+            openai_tools = ToolSchemaConverter.to_openai_format(tools)
+            _LOGGER.debug("Retrieved %d tools for native function calling", len(tools))
+            return openai_tools
+
+        except Exception as e:
+            _LOGGER.warning("Failed to get tools for native function calling: %s", e)
+            return None
+
     async def process_query(
         self,
         user_query: str,
@@ -179,6 +210,11 @@ class AiAgentHaAgent:
         kwargs = {}
         if debug:
             kwargs["debug"] = debug
+
+        # Add tools for native function calling
+        tools = self._get_tools_for_provider()
+        if tools:
+            kwargs["tools"] = tools
 
         # Add RAG context if available
         if self._rag_manager:
