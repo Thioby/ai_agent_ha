@@ -519,3 +519,230 @@ class TestAgentUtilityMethods:
         agent.clear_conversation_history()
 
         assert agent.conversation_history == []
+
+
+class TestAgentDataMethods:
+    """Test AiAgentHaAgent data retrieval methods."""
+
+    @pytest.fixture
+    def agent_config(self):
+        """Mock agent config."""
+        return {
+            "ai_provider": "openai",
+            "openai_token": "sk-" + "a" * 48,
+        }
+
+    @pytest.mark.asyncio
+    async def test_get_entities_by_domain_empty_domain(self, hass, agent_config):
+        """Test get_entities_by_domain with empty domain returns error."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_entities_by_domain("")
+
+        assert len(result) == 1
+        assert "error" in result[0]
+        assert "required" in result[0]["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_get_entities_by_domain_success(self, hass, agent_config):
+        """Test get_entities_by_domain returns entities for domain."""
+        hass.states.async_set("light.living_room", "on", {"friendly_name": "Living Room"})
+        hass.states.async_set("light.bedroom", "off", {"friendly_name": "Bedroom"})
+        hass.states.async_set("switch.fan", "on", {"friendly_name": "Fan"})
+
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_entities_by_domain("light")
+
+        assert len(result) == 2
+        entity_ids = [e["entity_id"] for e in result]
+        assert "light.living_room" in entity_ids
+        assert "light.bedroom" in entity_ids
+
+    @pytest.mark.asyncio
+    async def test_get_entities_by_domain_no_entities(self, hass, agent_config):
+        """Test get_entities_by_domain returns empty list when no entities."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_entities_by_domain("nonexistent")
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_entities_by_device_class_empty(self, hass, agent_config):
+        """Test get_entities_by_device_class with empty device_class returns error."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_entities_by_device_class("")
+
+        assert len(result) == 1
+        assert "error" in result[0]
+
+    @pytest.mark.asyncio
+    async def test_get_scenes_empty(self, hass, agent_config):
+        """Test get_scenes with no scenes returns empty list."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_scenes()
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_scenes_with_scenes(self, hass, agent_config):
+        """Test get_scenes returns scene data."""
+        from datetime import datetime
+
+        hass.states.async_set(
+            "scene.movie_time",
+            "scening",
+            {
+                "friendly_name": "Movie Time",
+                "icon": "mdi:movie",
+                "last_activated": datetime.now().isoformat(),
+            }
+        )
+        hass.states.async_set(
+            "scene.good_morning",
+            "scening",
+            {"friendly_name": "Good Morning"}
+        )
+
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_scenes()
+
+        assert len(result) == 2
+        names = [s["name"] for s in result]
+        assert "Movie Time" in names
+        assert "Good Morning" in names
+
+    @pytest.mark.asyncio
+    async def test_get_weather_data_no_entities(self, hass, agent_config):
+        """Test get_weather_data with no weather entities returns error."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_weather_data()
+
+        assert "error" in result
+        assert "No weather entities" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_get_weather_data_with_entity(self, hass, agent_config):
+        """Test get_weather_data returns weather data."""
+        hass.states.async_set(
+            "weather.home",
+            "sunny",
+            {
+                "friendly_name": "Home Weather",
+                "temperature": 22,
+                "humidity": 55,
+                "pressure": 1013,
+                "wind_speed": 10,
+                "forecast": [
+                    {"datetime": "2024-01-15", "temperature": 20, "condition": "cloudy"}
+                ]
+            }
+        )
+
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_weather_data()
+
+        assert "error" not in result
+        # Weather data is returned with nested 'current' structure
+        assert "current" in result
+        assert result["current"]["entity_id"] == "weather.home"
+        assert result["current"]["temperature"] == 22
+        assert result["current"]["humidity"] == 55
+
+    @pytest.mark.asyncio
+    async def test_get_entity_state_empty_id(self, hass, agent_config):
+        """Test get_entity_state with empty ID returns error."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_entity_state("")
+
+        assert "error" in result
+        assert "required" in result["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_get_statistics_empty_id(self, hass, agent_config):
+        """Test get_statistics with empty entity_id returns error."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_statistics("")
+
+        assert "error" in result
+        assert "required" in result["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_get_statistics_no_recorder(self, hass, agent_config):
+        """Test get_statistics without recorder returns error."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_statistics("sensor.test")
+
+        assert "error" in result
+        # Either recorder not available or exception
+
+    @pytest.mark.asyncio
+    async def test_get_automations_empty(self, hass, agent_config):
+        """Test get_automations with no automations."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_automations()
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_automations_with_automations(self, hass, agent_config):
+        """Test get_automations returns automation data."""
+        hass.states.async_set(
+            "automation.morning_lights",
+            "on",
+            {
+                "friendly_name": "Morning Lights",
+                "last_triggered": "2024-01-15T08:00:00",
+            }
+        )
+
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_automations()
+
+        assert len(result) == 1
+        assert result[0]["entity_id"] == "automation.morning_lights"
+        # Returns entity state format with friendly_name
+        assert result[0]["friendly_name"] == "Morning Lights"
+
+    @pytest.mark.asyncio
+    async def test_get_person_data_empty(self, hass, agent_config):
+        """Test get_person_data with no persons."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_person_data()
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_person_data_with_persons(self, hass, agent_config):
+        """Test get_person_data returns person data."""
+        hass.states.async_set(
+            "person.john",
+            "home",
+            {
+                "friendly_name": "John",
+                "source": "device_tracker.phone",
+            }
+        )
+
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_person_data()
+
+        assert len(result) == 1
+        assert result[0]["entity_id"] == "person.john"
+        assert result[0]["state"] == "home"
+
+    @pytest.mark.asyncio
+    async def test_get_area_registry(self, hass, agent_config):
+        """Test get_area_registry returns area data."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_area_registry()
+
+        # Should return dict structure even if empty
+        assert isinstance(result, dict)
+
+    @pytest.mark.asyncio
+    async def test_get_dashboards(self, hass, agent_config):
+        """Test get_dashboards returns dashboard list."""
+        agent = AiAgentHaAgent(hass, agent_config)
+        result = await agent.get_dashboards()
+
+        # Should return list even if empty
+        assert isinstance(result, list)
