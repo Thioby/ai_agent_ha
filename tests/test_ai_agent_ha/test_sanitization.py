@@ -1,7 +1,7 @@
 """Tests for the sanitization utility function."""
 
 import pytest
-from custom_components.ai_agent_ha.agent import sanitize_for_logging
+from custom_components.ai_agent_ha.utils import sanitize_for_logging
 
 
 class TestSanitization:

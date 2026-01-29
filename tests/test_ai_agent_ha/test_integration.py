@@ -57,7 +57,7 @@ class TestIntegration:
                 "openai": MagicMock(),
             },
         ), patch(
-            "custom_components.ai_agent_ha.agent.AiAgentHaAgent"
+            "custom_components.ai_agent_ha.agent_compat.AiAgentHaAgent"
         ) as mock_agent_class:
 
             # Mock agent instance
@@ -85,7 +85,7 @@ class TestIntegration:
                 "openai": MagicMock(),
             },
         ), patch(
-            "custom_components.ai_agent_ha.agent.AiAgentHaAgent"
+            "custom_components.ai_agent_ha.agent_compat.AiAgentHaAgent"
         ) as mock_agent_class:
 
             # Mock agent instance with query method
@@ -120,7 +120,7 @@ class TestIntegration:
                 "openai": MagicMock(),
             },
         ), patch(
-            "custom_components.ai_agent_ha.agent.AiAgentHaAgent"
+            "custom_components.ai_agent_ha.agent_compat.AiAgentHaAgent"
         ) as mock_agent_class:
 
             mock_agent = MagicMock()
@@ -147,7 +147,7 @@ class TestIntegration:
                 "openai": MagicMock(),
             },
         ), patch(
-            "custom_components.ai_agent_ha.agent.AiAgentHaAgent"
+            "custom_components.ai_agent_ha.agent_compat.AiAgentHaAgent"
         ) as mock_agent_class:
 
             mock_agent = MagicMock()
