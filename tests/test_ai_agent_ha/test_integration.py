@@ -6,20 +6,10 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import sys
 import os
 
-# Add the parent directory to the path for direct imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
-try:
-    import homeassistant
-    from homeassistant.core import HomeAssistant, ServiceCall
-    from homeassistant.config_entries import ConfigEntry
-
-    HOMEASSISTANT_AVAILABLE = True
-except ImportError:
-    HOMEASSISTANT_AVAILABLE = False
-    HomeAssistant = MagicMock
-    ServiceCall = MagicMock
-    ConfigEntry = MagicMock
+import homeassistant
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.config_entries import ConfigEntry
+from custom_components.ai_agent_ha import async_setup_entry, async_unload_entry
 
 
 class TestIntegration:
@@ -53,9 +43,6 @@ class TestIntegration:
         return mock
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(
-        not HOMEASSISTANT_AVAILABLE, reason="Home Assistant not available"
-    )
     async def test_full_integration_setup(self, mock_hass, mock_config_entry):
         """Test the full integration setup process."""
         with patch.dict(
@@ -77,8 +64,6 @@ class TestIntegration:
             mock_agent = MagicMock()
             mock_agent_class.return_value = mock_agent
 
-            from custom_components.ai_agent_ha import async_setup_entry
-
             result = await async_setup_entry(mock_hass, mock_config_entry)
             assert result is True
 
@@ -86,9 +71,6 @@ class TestIntegration:
             assert mock_hass.services.async_register.called
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(
-        not HOMEASSISTANT_AVAILABLE, reason="Home Assistant not available"
-    )
     async def test_service_calls(self, mock_hass, mock_config_entry):
         """Test service call functionality."""
         with patch.dict(
@@ -111,8 +93,6 @@ class TestIntegration:
             mock_agent.send_query = AsyncMock(return_value="Test response")
             mock_agent_class.return_value = mock_agent
 
-            from custom_components.ai_agent_ha import async_setup_entry
-
             # Setup the integration
             await async_setup_entry(mock_hass, mock_config_entry)
 
@@ -126,9 +106,6 @@ class TestIntegration:
             assert len(service_calls) > 0, "Query service should be registered"
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(
-        not HOMEASSISTANT_AVAILABLE, reason="Home Assistant not available"
-    )
     async def test_frontend_panel_registration(self, mock_hass, mock_config_entry):
         """Test frontend panel registration."""
         with patch.dict(
@@ -149,8 +126,6 @@ class TestIntegration:
             mock_agent = MagicMock()
             mock_agent_class.return_value = mock_agent
 
-            from custom_components.ai_agent_ha import async_setup_entry
-
             result = await async_setup_entry(mock_hass, mock_config_entry)
             assert result is True
 
@@ -158,9 +133,6 @@ class TestIntegration:
             mock_hass.http.async_register_static_paths.assert_called()
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(
-        not HOMEASSISTANT_AVAILABLE, reason="Home Assistant not available"
-    )
     async def test_unload_entry(self, mock_hass, mock_config_entry):
         """Test unloading the integration."""
         with patch.dict(
@@ -180,11 +152,6 @@ class TestIntegration:
 
             mock_agent = MagicMock()
             mock_agent_class.return_value = mock_agent
-
-            from custom_components.ai_agent_ha import (
-                async_setup_entry,
-                async_unload_entry,
-            )
 
             # Setup first
             await async_setup_entry(mock_hass, mock_config_entry)

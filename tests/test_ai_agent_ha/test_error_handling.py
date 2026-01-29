@@ -101,6 +101,20 @@ class TestErrorClassifier:
         assert error_type == ErrorType.LOGIC
         assert is_retryable is False
 
+    def test_classify_empty_string_as_logic(self):
+        """Empty error string should be classified as LOGIC and not retryable."""
+        error_type, is_retryable = ErrorClassifier.classify("")
+
+        assert error_type == ErrorType.LOGIC
+        assert is_retryable is False
+
+    def test_classify_none_as_logic(self):
+        """None error should be classified as LOGIC and not retryable."""
+        error_type, is_retryable = ErrorClassifier.classify(None)
+
+        assert error_type == ErrorType.LOGIC
+        assert is_retryable is False
+
 
 class TestRetryTracker:
     """Test retry tracking logic."""
@@ -237,6 +251,24 @@ class TestFormatErrorForLLM:
         except json.JSONDecodeError:
             # If not JSON, should still contain key info
             assert "test_tool" in result.lower() or "error" in result.lower()
+
+    def test_format_error_truncates_long_parameters(self):
+        """Long parameter values should be truncated to 100 chars."""
+        long_value = "B" * 200
+        result = format_error_for_llm(
+            error="Test error",
+            request_type="test_tool",
+            parameters={"long_param": long_value, "short_param": "short"},
+            attempt=1,
+            max_attempts=3,
+        )
+
+        parsed = json.loads(result)
+        # Long parameter should be truncated with "..."
+        assert len(str(parsed["failed_parameters"]["long_param"])) <= 103
+        assert "..." in str(parsed["failed_parameters"]["long_param"])
+        # Short parameter should remain unchanged
+        assert parsed["failed_parameters"]["short_param"] == "short"
 
 
 class TestIntegrationScenarios:

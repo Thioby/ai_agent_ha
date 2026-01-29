@@ -1,49 +1,67 @@
 """Fixtures for AI Agent HA tests."""
 
-import asyncio
-from unittest.mock import patch, MagicMock
-
 import pytest
+import pytest_asyncio
+from homeassistant.util import logging as ha_logging
 
-try:
+pytest_plugins = "pytest_homeassistant_custom_component"
+
+
+def pytest_configure(config):
+    """Configure pytest-asyncio mode to auto for better HA compatibility."""
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore::pytest.PytestRemovedIn9Warning",
+    )
+
+
+@pytest_asyncio.fixture
+async def hass(request):
+    """Wrap the HA hass fixture with pytest_asyncio decorator for compatibility.
+
+    This ensures the hass fixture from pytest-homeassistant-custom-component
+    works correctly with pytest-asyncio's strict mode.
+    """
+    # Get the original hass fixture from pytest-homeassistant-custom-component
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.setup import async_setup_component
 
-    HOMEASSISTANT_AVAILABLE = True
-except ImportError:
-    HOMEASSISTANT_AVAILABLE = False
-    # Mock Home Assistant classes for local testing
-    HomeAssistant = MagicMock
-    async_setup_component = MagicMock
+    # Access the original async generator fixture
+    hass_fixture = request.getfixturevalue("hass")
+
+    # If it's an async generator, iterate through it
+    if hasattr(hass_fixture, "__anext__"):
+        hass_instance = await hass_fixture.__anext__()
+        yield hass_instance
+        try:
+            await hass_fixture.__anext__()
+        except StopAsyncIteration:
+            pass
+    else:
+        yield hass_fixture
 
 
 @pytest.fixture
-async def hass():
-    """Return a Home Assistant instance for testing."""
-    if not HOMEASSISTANT_AVAILABLE:
-        # Return a mock for local testing
-        mock_hass = MagicMock()
-        mock_hass.data = {}
-        mock_hass.services = MagicMock()
-        mock_hass.config = MagicMock()
-        mock_hass.config.components = set()
-        yield mock_hass
+def auto_enable_custom_integrations(enable_custom_integrations):
+    """Enable custom integrations defined in the test directory.
+
+    Use this fixture explicitly in tests that need custom integrations enabled.
+    Not autouse to avoid requiring hass fixture for all tests.
+    """
+    yield
+
+
+@pytest.fixture(autouse=True)
+def fail_on_log_exception(request, monkeypatch):
+    """Fixture to fail if a callback wrapped by catch_log_exception or
+    coroutine wrapped by async_create_catching_coro throws.
+    """
+    if "no_fail_on_log_exception" in request.keywords:
         return
 
-    hass = HomeAssistant()
-    hass.config.components.add("persistent_notification")
+    def log_exception(format_err, *args):
+        raise RuntimeError(f"Log exception: {format_err}")
 
-    # Start Home Assistant
-    await hass.async_start()
-
-    yield hass
-
-    # Stop Home Assistant
-    await hass.async_stop()
-
-
-@pytest.fixture
-def mock_agent():
-    """Mock the AI Agent."""
-    with patch("custom_components.ai_agent_ha.agent.AiAgentHaAgent") as mock:
-        yield mock
+    # Use the imported module object directly
+    monkeypatch.setattr(ha_logging, "log_exception", log_exception)

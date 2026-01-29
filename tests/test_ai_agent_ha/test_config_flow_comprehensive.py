@@ -1,176 +1,418 @@
 """Comprehensive tests for configuration flow."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-import sys
-import os
-import importlib.util
+from unittest.mock import patch, MagicMock
+from homeassistant import config_entries
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
-# Add the parent directory to the path for direct imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from custom_components.ai_agent_ha import config_flow
+from custom_components.ai_agent_ha.const import DOMAIN, CONF_LOCAL_URL, CONF_RAG_ENABLED
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+pytestmark = pytest.mark.asyncio
 
-def _import_config_flow_directly():
-    """Import config_flow.py directly without going through __init__.py."""
-    config_flow_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "custom_components", "ai_agent_ha", "config_flow.py"
+@pytest.fixture(autouse=True)
+def enable_custom_integrations(auto_enable_custom_integrations):
+    """Enable custom integrations for all tests."""
+    yield
+
+@pytest.fixture(autouse=True)
+def bypass_setup_entry():
+    """Bypass entry setup."""
+    with patch("custom_components.ai_agent_ha.async_setup_entry", return_value=True):
+        yield
+
+async def test_step_user_provider_selection(hass: HomeAssistant):
+    """Test user step selecting a provider."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    config_flow_path = os.path.abspath(config_flow_path)
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+
+    # Select OpenAI (non-OAuth)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"ai_provider": "openai"},
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "configure"
+
+async def test_step_user_anthropic_oauth(hass: HomeAssistant):
+    """Test user step selecting Anthropic OAuth."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
     
-    spec = importlib.util.spec_from_file_location("config_flow", config_flow_path)
-    config_flow_module = importlib.util.module_from_spec(spec)
+    with patch("custom_components.ai_agent_ha.config_flow.generate_pkce", return_value=("verifier", "challenge")), \
+         patch("custom_components.ai_agent_ha.config_flow.build_auth_url", return_value="http://auth-url"):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"ai_provider": "anthropic_oauth"},
+        )
+        
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "anthropic_oauth"
+    assert "auth_url" in result["description_placeholders"]
+
+async def test_step_user_gemini_oauth(hass: HomeAssistant):
+    """Test user step selecting Gemini OAuth."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
     
-    # Mock dependencies before executing
-    sys.modules["homeassistant.helpers.config_validation"] = MagicMock()
-    sys.modules["voluptuous"] = MagicMock()
+    with patch("custom_components.ai_agent_ha.gemini_oauth.generate_pkce", return_value=("verifier", "challenge")), \
+         patch("custom_components.ai_agent_ha.gemini_oauth.build_auth_url", return_value="http://auth-url"):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"ai_provider": "gemini_oauth"},
+        )
+        
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "gemini_oauth"
+    assert "auth_url" in result["description_placeholders"]
+
+async def test_step_configure_local(hass: HomeAssistant):
+    """Test configure step for local provider."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"ai_provider": "local"},
+    )
+    assert result["step_id"] == "configure"
+
+    # Fill form
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_LOCAL_URL: "http://localhost:11434",
+            "model": "llama3",
+            CONF_RAG_ENABLED: False
+        },
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"]["ai_provider"] == "local"
+    assert result["data"][CONF_LOCAL_URL] == "http://localhost:11434"
+    assert result["data"]["models"]["local"] == "llama3"
+
+async def test_step_configure_zai(hass: HomeAssistant):
+    """Test configure step for zai provider."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"ai_provider": "zai"},
+    )
+    assert result["step_id"] == "configure"
+
+    # Fill form
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            "zai_token": "secret_token",
+            "zai_endpoint": "coding",
+            "model": "glm-4.7",
+            CONF_RAG_ENABLED: True
+        },
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"]["ai_provider"] == "zai"
+    assert result["data"]["zai_token"] == "secret_token"
+    assert result["data"]["zai_endpoint"] == "coding"
+    assert result["data"]["models"]["zai"] == "glm-4.7"
+
+async def test_step_configure_empty_token(hass: HomeAssistant):
+    """Test configure step with empty token."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"ai_provider": "openai"},
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            "openai_token": "",
+            "model": "gpt-4o"
+        },
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"]["openai_token"] == "required"
+
+async def test_step_configure_custom_model(hass: HomeAssistant):
+    """Test configure step with custom model."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"ai_provider": "openai"},
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            "openai_token": "token",
+            "model": "gpt-4o",
+            "custom_model": "my-custom-gpt"
+        },
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"]["models"]["openai"] == "my-custom-gpt"
+
+async def test_step_configure_custom_fallback(hass: HomeAssistant):
+    """Test configure step with 'Custom...' selected but empty custom_model field."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"ai_provider": "openai"},
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            "openai_token": "token",
+            "model": "Custom...",
+            "custom_model": ""
+        },
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    # Should fallback to default
+    from custom_components.ai_agent_ha.config_flow import DEFAULT_MODELS
+    assert result["data"]["models"]["openai"] == DEFAULT_MODELS["openai"]
+
+async def test_step_anthropic_oauth_success(hass: HomeAssistant):
+    """Test successful Anthropic OAuth flow."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
     
-    spec.loader.exec_module(config_flow_module)
-    return config_flow_module
+    with patch("custom_components.ai_agent_ha.config_flow.generate_pkce", return_value=("verifier", "challenge")), \
+         patch("custom_components.ai_agent_ha.config_flow.build_auth_url", return_value="http://auth-url"):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"ai_provider": "anthropic_oauth"},
+        )
 
+    with patch("custom_components.ai_agent_ha.config_flow.exchange_code", return_value={
+        "access_token": "at",
+        "refresh_token": "rt",
+        "expires_at": 12345
+    }):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"code": "my_code"},
+        )
 
-class TestConfigFlowComprehensive:
-    """Comprehensive tests for configuration flow."""
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "AI Agent HA (Anthropic OAuth)"
+    assert result["data"]["anthropic_oauth"]["access_token"] == "at"
 
-    def test_config_flow_import_success(self):
-        """Test successful import of config flow."""
-        try:
-            config_flow_module = _import_config_flow_directly()
-            assert hasattr(config_flow_module, 'AiAgentHaConfigFlow')
-            assert hasattr(config_flow_module.AiAgentHaConfigFlow, 'VERSION')
-            assert config_flow_module.AiAgentHaConfigFlow.VERSION == 1
-        except Exception as e:
-            pytest.skip(f"Config flow import failed: {e}")
+async def test_step_anthropic_oauth_no_code(hass: HomeAssistant):
+    """Test Anthropic OAuth step with no code."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    
+    with patch("custom_components.ai_agent_ha.config_flow.generate_pkce", return_value=("verifier", "challenge")), \
+         patch("custom_components.ai_agent_ha.config_flow.build_auth_url", return_value="http://auth-url"):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"ai_provider": "anthropic_oauth"},
+        )
 
-    def test_config_flow_class_methods(self):
-        """Test that config flow has all required methods."""
-        try:
-            config_flow_module = _import_config_flow_directly()
-            flow_class = config_flow_module.AiAgentHaConfigFlow
-            
-            required_methods = [
-                'async_step_user',
-                'async_step_openai',
-                'async_step_anthropic',
-                'async_step_gemini',
-                'async_step_llama',
-                'async_step_openrouter',
-                'async_step_local'
-            ]
-            
-            for method in required_methods:
-                assert hasattr(flow_class, method), f"Missing method: {method}"
-                
-        except Exception as e:
-            pytest.skip(f"Config flow methods test failed: {e}")
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"code": ""},
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"]["code"] == "required"
 
-    def test_config_flow_constants(self):
-        """Test config flow constants."""
-        try:
-            config_flow_module = _import_config_flow_directly()
-            
-            # Test that required constants are defined
-            from custom_components.ai_agent_ha.const import DOMAIN, AI_PROVIDERS
-            
-            assert DOMAIN == "ai_agent_ha"
-            assert isinstance(AI_PROVIDERS, list)
-            assert len(AI_PROVIDERS) > 0
-            
-            expected_providers = ["llama", "openai", "gemini", "openrouter", "anthropic", "local"]
-            for provider in expected_providers:
-                assert provider in AI_PROVIDERS
-                
-        except Exception as e:
-            pytest.skip(f"Config flow constants test failed: {e}")
+async def test_step_anthropic_oauth_failed(hass: HomeAssistant):
+    """Test Anthropic OAuth step with exchange failure."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    
+    with patch("custom_components.ai_agent_ha.config_flow.generate_pkce", return_value=("verifier", "challenge")), \
+         patch("custom_components.ai_agent_ha.config_flow.build_auth_url", return_value="http://auth-url"):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"ai_provider": "anthropic_oauth"},
+        )
 
-    def test_config_flow_schema_definitions(self):
-        """Test that config flow schemas are properly defined."""
-        try:
-            config_flow_module = _import_config_flow_directly()
-            
-            # Check that schema definitions exist
-            assert hasattr(config_flow_module, 'STEP_USER_DATA_SCHEMA')
-            assert hasattr(config_flow_module, 'STEP_OPENAI_DATA_SCHEMA')
-            assert hasattr(config_flow_module, 'STEP_ANTHROPIC_DATA_SCHEMA')
-            assert hasattr(config_flow_module, 'STEP_GEMINI_DATA_SCHEMA')
-            assert hasattr(config_flow_module, 'STEP_LLAMA_DATA_SCHEMA')
-            assert hasattr(config_flow_module, 'STEP_OPENROUTER_DATA_SCHEMA')
-            assert hasattr(config_flow_module, 'STEP_LOCAL_DATA_SCHEMA')
-            
-        except Exception as e:
-            pytest.skip(f"Config flow schema test failed: {e}")
+    with patch("custom_components.ai_agent_ha.config_flow.exchange_code", return_value={"error": "failed"}):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"code": "my_code"},
+        )
 
-    def test_config_flow_instantiation(self):
-        """Test config flow can be instantiated."""
-        try:
-            config_flow_module = _import_config_flow_directly()
-            flow_class = config_flow_module.AiAgentHaConfigFlow
-            
-            # Create instance
-            flow = flow_class()
-            assert flow.VERSION == 1
-            
-        except Exception as e:
-            pytest.skip(f"Config flow instantiation test failed: {e}")
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"]["base"] == "oauth_failed"
 
-    def test_config_flow_data_schemas(self):
-        """Test that data schemas have correct structure."""
-        try:
-            config_flow_module = _import_config_flow_directly()
-            
-            schemas = [
-                'STEP_USER_DATA_SCHEMA',
-                'STEP_OPENAI_DATA_SCHEMA',
-                'STEP_ANTHROPIC_DATA_SCHEMA',
-                'STEP_GEMINI_DATA_SCHEMA',
-                'STEP_LLAMA_DATA_SCHEMA',
-                'STEP_OPENROUTER_DATA_SCHEMA',
-                'STEP_LOCAL_DATA_SCHEMA'
-            ]
-            
-            for schema_name in schemas:
-                schema = getattr(config_flow_module, schema_name, None)
-                assert schema is not None, f"Schema {schema_name} not found"
-                
-        except Exception as e:
-            pytest.skip(f"Config flow schema structure test failed: {e}")
+async def test_step_gemini_oauth_success(hass: HomeAssistant):
+    """Test successful Gemini OAuth flow."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    
+    with patch("custom_components.ai_agent_ha.gemini_oauth.generate_pkce", return_value=("verifier", "challenge")), \
+         patch("custom_components.ai_agent_ha.gemini_oauth.build_auth_url", return_value="http://auth-url"):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"ai_provider": "gemini_oauth"},
+        )
 
-    def test_config_flow_provider_options(self):
-        """Test that all AI providers are properly configured."""
-        try:
-            from custom_components.ai_agent_ha.const import AI_PROVIDERS
-            
-            expected_providers = {
-                "llama": "Llama",
-                "openai": "OpenAI",
-                "gemini": "Google Gemini",
-                "openrouter": "OpenRouter",
-                "anthropic": "Anthropic",
-                "local": "Local Model"
-            }
-            
-            for provider_key, provider_name in expected_providers.items():
-                assert provider_key in AI_PROVIDERS
-                
-        except Exception as e:
-            pytest.skip(f"Provider options test failed: {e}")
+    with patch("custom_components.ai_agent_ha.gemini_oauth.exchange_code", return_value={
+        "access_token": "at",
+        "refresh_token": "rt",
+        "expires_at": 12345
+    }):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"code": "my_code", "model": "gemini-2.5-flash"},
+        )
 
-    def test_config_flow_step_mapping(self):
-        """Test that step mappings are correct."""
-        try:
-            config_flow_module = _import_config_flow_directly()
-            
-            # Check that provider steps are mapped correctly
-            provider_steps = {
-                "openai": "async_step_openai",
-                "anthropic": "async_step_anthropic",
-                "gemini": "async_step_gemini",
-                "llama": "async_step_llama",
-                "openrouter": "async_step_openrouter",
-                "local": "async_step_local"
-            }
-            
-            for provider, step_method in provider_steps.items():
-                assert hasattr(config_flow_module.AiAgentHaConfigFlow, step_method)
-                
-        except Exception as e:
-            pytest.skip(f"Step mapping test failed: {e}")
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "AI Agent HA (Gemini OAuth)"
+    assert result["data"]["gemini_oauth"]["access_token"] == "at"
+    assert result["data"]["models"]["gemini_oauth"] == "gemini-2.5-flash"
+
+async def test_step_gemini_oauth_url_parsing(hass: HomeAssistant):
+    """Test Gemini OAuth with full URL code."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    
+    with patch("custom_components.ai_agent_ha.gemini_oauth.generate_pkce", return_value=("verifier", "challenge")), \
+         patch("custom_components.ai_agent_ha.gemini_oauth.build_auth_url", return_value="http://auth-url"):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"ai_provider": "gemini_oauth"},
+        )
+
+    callback_url = "http://localhost:8085/oauth2callback?code=extracted_code&state=xyz"
+
+    with patch("custom_components.ai_agent_ha.gemini_oauth.exchange_code", return_value={
+        "access_token": "at",
+        "refresh_token": "rt",
+        "expires_at": 12345
+    }) as mock_exchange:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"code": callback_url, "model": "gemini-2.5-flash"},
+        )
+        
+        # Verify extraction happened
+        call_args = mock_exchange.call_args
+        assert call_args[0][1] == "extracted_code"
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+
+async def test_extract_oauth_code(hass: HomeAssistant):
+    """Test the helper method for extracting oauth code."""
+    flow = config_flow.AiAgentHaConfigFlow()
+    
+    # Test plain code
+    assert flow._extract_oauth_code("my_code") == "my_code"
+    
+    # Test URL
+    url = "http://localhost:8085/oauth2callback?code=my_code&state=xyz"
+    assert flow._extract_oauth_code(url) == "my_code"
+    
+    # Test URL without code
+    url_no_code = "http://localhost:8085/oauth2callback?state=xyz"
+    assert flow._extract_oauth_code(url_no_code) == "http://localhost:8085/oauth2callback?state=xyz"
+
+async def test_options_flow_init(hass: HomeAssistant):
+    """Test options flow initialization."""
+    entry = MockConfigEntry(domain=DOMAIN, data={"ai_provider": "openai", "openai_token": "abc"})
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+async def test_options_flow_switch_provider(hass: HomeAssistant):
+    """Test switching provider in options flow."""
+    entry = MockConfigEntry(domain=DOMAIN, data={"ai_provider": "openai", "openai_token": "abc"})
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={"ai_provider": "llama"},
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "configure_options"
+    
+    # Check that it asks for llama token
+    # (voluptuous schema is not easy to introspect deeply here, but we check step transition)
+
+async def test_options_flow_oauth_provider(hass: HomeAssistant):
+    """Test options flow for OAuth provider (limited options)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, 
+        data={"ai_provider": "anthropic_oauth", "anthropic_oauth": {"access_token": "x"}}
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    
+    # Keep same provider
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={"ai_provider": "anthropic_oauth"},
+    )
+    
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "configure_options"
+    
+    # Should only have RAG option
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={CONF_RAG_ENABLED: False},
+    )
+    
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert entry.data[CONF_RAG_ENABLED] is False
+
+async def test_options_flow_update_provider(hass: HomeAssistant):
+    """Test updating settings for standard provider."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, 
+        data={"ai_provider": "openai", "openai_token": "old", "models": {"openai": "old-model"}}
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    
+    # Select same provider
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={"ai_provider": "openai"},
+    )
+
+    # Update token and model
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            "openai_token": "new_token",
+            "model": "gpt-5",
+            CONF_RAG_ENABLED: True
+        },
+    )
+    
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert entry.data["openai_token"] == "new_token"
+    assert entry.data["models"]["openai"] == "gpt-5"
+    assert entry.data[CONF_RAG_ENABLED] is True

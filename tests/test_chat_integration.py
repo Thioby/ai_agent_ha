@@ -1,46 +1,44 @@
 """Integration tests for the new chat session functionality.
 
-These tests verify the complete chat flow using the same mocking approach as test_storage.py.
+These tests verify the complete chat flow using simple mocks that don't conflict
+with pytest-homeassistant-custom-component.
 """
 
 from __future__ import annotations
 
-import importlib.util
-import sys
-from datetime import datetime
-from pathlib import Path
-from types import ModuleType
-from typing import Any
-from unittest.mock import MagicMock
 import uuid
+from datetime import datetime
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from custom_components.ai_agent_ha.storage import (
+    Message,
+    Session,
+    SessionStorage,
+)
+
 
 # ============================================================================
-# Mock Home Assistant dependencies
+# Test Fixtures
 # ============================================================================
 
 
 class MockStore:
-    """Mock Home Assistant Store for testing.
+    """Mock for homeassistant.helpers.storage.Store with shared class-level storage.
 
-    This class simulates the behavior of homeassistant.helpers.storage.Store.
+    This allows testing persistence across multiple SessionStorage instances.
     """
 
-    # Class-level storage for persistence testing
+    # Class-level storage for persistence testing across instances
     _stores: dict[str, "MockStore"] = {}
 
-    def __init__(
-        self,
-        hass: Any,
-        version: int,
-        key: str,
-    ) -> None:
+    def __init__(self, hass: Any, version: int, key: str) -> None:
         self.hass = hass
         self.version = version
         self.key = key
-        # Check if we have existing data for this key
+        # Check if we have existing data for this key (for persistence tests)
         if key in MockStore._stores:
             self._data = MockStore._stores[key]._data
         else:
@@ -59,83 +57,30 @@ class MockStore:
         cls._stores.clear()
 
 
-def _setup_homeassistant_mocks() -> None:
-    """Set up mock modules for Home Assistant."""
-
-    def _create_mock_module(name: str) -> ModuleType:
-        mod = ModuleType(name)
-        mod.__path__ = []
-        return mod
-
-    # Create mock modules
-    mocks = {
-        "homeassistant": _create_mock_module("homeassistant"),
-        "homeassistant.core": _create_mock_module("homeassistant.core"),
-        "homeassistant.helpers": _create_mock_module("homeassistant.helpers"),
-        "homeassistant.helpers.storage": _create_mock_module(
-            "homeassistant.helpers.storage"
-        ),
-    }
-
-    # Add Store class to storage module
-    setattr(mocks["homeassistant.helpers.storage"], "Store", MockStore)
-
-    # Add HomeAssistant mock
-    setattr(mocks["homeassistant.core"], "HomeAssistant", MagicMock)
-
-    for name, mock in mocks.items():
-        sys.modules[name] = mock
-
-
-# Set up mocks before importing storage module
-_setup_homeassistant_mocks()
-
-
-def _import_storage_module():
-    """Import storage module directly without going through __init__.py."""
-    storage_path = (
-        Path(__file__).parent.parent
-        / "custom_components"
-        / "ai_agent_ha"
-        / "storage.py"
-    )
-    spec = importlib.util.spec_from_file_location("storage", storage_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load storage module from {storage_path}")
-
-    storage_module = importlib.util.module_from_spec(spec)
-    sys.modules["storage"] = storage_module
-    spec.loader.exec_module(storage_module)
-    return storage_module
-
-
-_storage = _import_storage_module()
-
-# Export the classes from the storage module
-Message = _storage.Message
-Session = _storage.Session
-SessionStorage = _storage.SessionStorage
-
-
-# ============================================================================
-# Test Fixtures
-# ============================================================================
-
-
-@pytest.fixture(autouse=True)
-def reset_stores():
-    """Reset mock stores before each test."""
-    MockStore.reset_stores()
-    yield
-    MockStore.reset_stores()
-
-
 @pytest.fixture
 def mock_hass() -> MagicMock:
     """Create a mock Home Assistant instance."""
     hass = MagicMock()
     hass.data = {}
     return hass
+
+
+@pytest.fixture(autouse=True)
+def reset_mock_stores():
+    """Reset mock stores before and after each test."""
+    MockStore.reset_stores()
+    yield
+    MockStore.reset_stores()
+
+
+@pytest.fixture
+def mock_store_patch():
+    """Patch Store globally for all storage operations."""
+    with patch(
+        "custom_components.ai_agent_ha.storage.Store",
+        MockStore,
+    ):
+        yield
 
 
 # ============================================================================
@@ -147,7 +92,7 @@ class TestChatFlowIntegration:
     """Test the complete chat flow: create session -> send message -> verify persistence."""
 
     @pytest.mark.asyncio
-    async def test_full_chat_flow(self, mock_hass):
+    async def test_full_chat_flow(self, mock_hass, mock_store_patch):
         """Test complete flow: create session, send messages, reload, verify."""
         storage = SessionStorage(mock_hass, "test_user")
 
@@ -183,7 +128,7 @@ class TestChatFlowIntegration:
         assert messages[1].content == "Done! I've turned on the kitchen lights."
 
     @pytest.mark.asyncio
-    async def test_session_title_auto_update(self, mock_hass):
+    async def test_session_title_auto_update(self, mock_hass, mock_store_patch):
         """Test that session title updates from first user message."""
         storage = SessionStorage(mock_hass, "test_user")
 
@@ -205,7 +150,7 @@ class TestChatFlowIntegration:
         assert sessions[0].title == "How do I create an automation for motion..."
 
     @pytest.mark.asyncio
-    async def test_multiple_sessions_isolation(self, mock_hass):
+    async def test_multiple_sessions_isolation(self, mock_hass, mock_store_patch):
         """Test that messages are isolated between sessions."""
         storage = SessionStorage(mock_hass, "test_user")
 
@@ -239,7 +184,7 @@ class TestChatFlowIntegration:
         assert messages2[0].content == "Message for session 2"
 
     @pytest.mark.asyncio
-    async def test_session_delete_cascade(self, mock_hass):
+    async def test_session_delete_cascade(self, mock_hass, mock_store_patch):
         """Test that deleting session removes all its messages."""
         storage = SessionStorage(mock_hass, "test_user")
 
@@ -267,7 +212,7 @@ class TestChatFlowIntegration:
             await storage.get_session_messages(session.session_id)
 
     @pytest.mark.asyncio
-    async def test_conversation_context_building(self, mock_hass):
+    async def test_conversation_context_building(self, mock_hass, mock_store_patch):
         """Test building conversation history for AI context."""
         storage = SessionStorage(mock_hass, "test_user")
 
@@ -302,7 +247,7 @@ class TestChatFlowIntegration:
         assert history[-1]["content"] == "What did I just ask you to do?"
 
     @pytest.mark.asyncio
-    async def test_session_preview_updates(self, mock_hass):
+    async def test_session_preview_updates(self, mock_hass, mock_store_patch):
         """Test that session preview updates with last user message."""
         storage = SessionStorage(mock_hass, "test_user")
 
@@ -333,7 +278,7 @@ class TestChatFlowIntegration:
         assert sessions[0].preview == "Second message about temperature"
 
     @pytest.mark.asyncio
-    async def test_session_message_count(self, mock_hass):
+    async def test_session_message_count(self, mock_hass, mock_store_patch):
         """Test that session message count is tracked correctly."""
         storage = SessionStorage(mock_hass, "test_user")
 
@@ -353,7 +298,7 @@ class TestChatFlowIntegration:
         assert sessions[0].message_count == 10
 
     @pytest.mark.asyncio
-    async def test_user_isolation(self, mock_hass):
+    async def test_user_isolation(self, mock_hass, mock_store_patch):
         """Test that different users have isolated sessions."""
         storage_user_a = SessionStorage(mock_hass, "user_a")
         storage_user_b = SessionStorage(mock_hass, "user_b")

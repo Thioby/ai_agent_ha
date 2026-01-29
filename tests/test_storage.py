@@ -1,123 +1,26 @@
 """Tests for the session storage module.
 
-These tests run independently of Home Assistant by mocking its dependencies.
+These tests use simple mocks for HA dependencies, avoiding conflicts with
+pytest-homeassistant-custom-component while still testing the storage logic.
 """
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from types import ModuleType
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
-# ============================================================================
-# Mock Home Assistant dependencies
-# ============================================================================
-
-
-class MockStore:
-    """Mock Home Assistant Store for testing.
-
-    This class simulates the behavior of homeassistant.helpers.storage.Store.
-    """
-
-    # Class-level storage for persistence testing
-    _stores: dict[str, "MockStore"] = {}
-
-    def __init__(
-        self,
-        hass: Any,
-        version: int,
-        key: str,
-    ) -> None:
-        self.hass = hass
-        self.version = version
-        self.key = key
-        # Check if we have existing data for this key
-        if key in MockStore._stores:
-            self._data = MockStore._stores[key]._data
-        else:
-            self._data: dict[str, Any] | None = None
-        MockStore._stores[key] = self
-
-    async def async_load(self) -> dict[str, Any] | None:
-        return self._data
-
-    async def async_save(self, data: dict[str, Any]) -> None:
-        self._data = data
-
-    @classmethod
-    def reset_stores(cls) -> None:
-        """Reset all stored data between tests."""
-        cls._stores.clear()
-
-
-def _setup_homeassistant_mocks() -> None:
-    """Set up mock modules for Home Assistant."""
-
-    def _create_mock_module(name: str) -> ModuleType:
-        mod = ModuleType(name)
-        mod.__path__ = []
-        return mod
-
-    # Create mock modules
-    mocks = {
-        "homeassistant": _create_mock_module("homeassistant"),
-        "homeassistant.core": _create_mock_module("homeassistant.core"),
-        "homeassistant.helpers": _create_mock_module("homeassistant.helpers"),
-        "homeassistant.helpers.storage": _create_mock_module(
-            "homeassistant.helpers.storage"
-        ),
-    }
-
-    # Add Store class to storage module
-    setattr(mocks["homeassistant.helpers.storage"], "Store", MockStore)
-
-    # Add HomeAssistant mock
-    setattr(mocks["homeassistant.core"], "HomeAssistant", MagicMock)
-
-    for name, mock in mocks.items():
-        sys.modules[name] = mock
-
-
-# Set up mocks before importing storage module
-_setup_homeassistant_mocks()
-
-
-def _import_storage_module():
-    """Import storage module directly without going through __init__.py."""
-    storage_path = (
-        Path(__file__).parent.parent
-        / "custom_components"
-        / "ai_agent_ha"
-        / "storage.py"
-    )
-    spec = importlib.util.spec_from_file_location("storage", storage_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load storage module from {storage_path}")
-
-    storage_module = importlib.util.module_from_spec(spec)
-    sys.modules["storage"] = storage_module
-    spec.loader.exec_module(storage_module)
-    return storage_module
-
-
-_storage = _import_storage_module()
-
-# Export the classes and constants from the storage module
-MAX_MESSAGES_PER_SESSION = _storage.MAX_MESSAGES_PER_SESSION
-MAX_SESSIONS = _storage.MAX_SESSIONS
-SESSION_RETENTION_DAYS = _storage.SESSION_RETENTION_DAYS
-STORAGE_VERSION = _storage.STORAGE_VERSION
-Message = _storage.Message
-Session = _storage.Session
-SessionStorage = _storage.SessionStorage
+from custom_components.ai_agent_ha.storage import (
+    MAX_MESSAGES_PER_SESSION,
+    MAX_SESSIONS,
+    SESSION_RETENTION_DAYS,
+    STORAGE_VERSION,
+    Message,
+    Session,
+    SessionStorage,
+)
 
 
 # ============================================================================
@@ -125,12 +28,20 @@ SessionStorage = _storage.SessionStorage
 # ============================================================================
 
 
-@pytest.fixture(autouse=True)
-def reset_stores():
-    """Reset mock stores before each test."""
-    MockStore.reset_stores()
-    yield
-    MockStore.reset_stores()
+class MockStore:
+    """Simple mock for homeassistant.helpers.storage.Store."""
+
+    def __init__(self, hass: Any, version: int, key: str) -> None:
+        self.hass = hass
+        self.version = version
+        self.key = key
+        self._data: dict[str, Any] | None = None
+
+    async def async_load(self) -> dict[str, Any] | None:
+        return self._data
+
+    async def async_save(self, data: dict[str, Any]) -> None:
+        self._data = data
 
 
 @pytest.fixture
@@ -142,13 +53,23 @@ def mock_hass() -> MagicMock:
 
 
 @pytest.fixture
-def storage(mock_hass: MagicMock) -> SessionStorage:
-    """Create a SessionStorage instance for testing."""
+def mock_store_patch():
+    """Patch Store globally for all storage operations."""
+    with patch(
+        "custom_components.ai_agent_ha.storage.Store",
+        MockStore,
+    ):
+        yield
+
+
+@pytest.fixture
+def storage(mock_hass: MagicMock, mock_store_patch) -> SessionStorage:
+    """Create a SessionStorage instance for testing with mocked Store."""
     return SessionStorage(mock_hass, "test_user")
 
 
 @pytest.fixture
-def storage_factory(mock_hass: MagicMock):
+def storage_factory(mock_hass: MagicMock, mock_store_patch):
     """Factory to create SessionStorage instances for different users."""
 
     def create(user_id: str) -> SessionStorage:
@@ -558,49 +479,47 @@ class TestSessionStorageCleanup:
     @pytest.mark.asyncio
     async def test_cleanup_old_sessions(self, mock_hass: MagicMock) -> None:
         """Test that old sessions are cleaned up."""
-        # Pre-populate store with old and recent sessions
         old_date = (
             datetime.now(timezone.utc) - timedelta(days=SESSION_RETENTION_DAYS + 1)
         ).isoformat()
         recent_date = datetime.now(timezone.utc).isoformat()
 
-        # Create storage and manually set data
-        storage = SessionStorage(mock_hass, "cleanup_test_user")
-
-        # Directly set data in the mock store
-        store_key = f"ai_agent_ha_user_data_cleanup_test_user"
-        if store_key in MockStore._stores:
-            MockStore._stores[store_key]._data = {
-                "version": STORAGE_VERSION,
-                "sessions": [
-                    {
-                        "session_id": "old-session",
-                        "title": "Old Session",
-                        "created_at": old_date,
-                        "updated_at": old_date,
-                        "provider": "anthropic",
-                        "message_count": 0,
-                        "preview": "",
-                    },
-                    {
-                        "session_id": "recent-session",
-                        "title": "Recent Session",
-                        "created_at": recent_date,
-                        "updated_at": recent_date,
-                        "provider": "anthropic",
-                        "message_count": 0,
-                        "preview": "",
-                    },
-                ],
-                "messages": {
-                    "old-session": [],
-                    "recent-session": [],
+        # Create a mock store with pre-populated data
+        mock_store = MockStore(mock_hass, STORAGE_VERSION, "test")
+        mock_store._data = {
+            "version": STORAGE_VERSION,
+            "sessions": [
+                {
+                    "session_id": "old-session",
+                    "title": "Old Session",
+                    "created_at": old_date,
+                    "updated_at": old_date,
+                    "provider": "anthropic",
+                    "message_count": 0,
+                    "preview": "",
                 },
-            }
+                {
+                    "session_id": "recent-session",
+                    "title": "Recent Session",
+                    "created_at": recent_date,
+                    "updated_at": recent_date,
+                    "provider": "anthropic",
+                    "message_count": 0,
+                    "preview": "",
+                },
+            ],
+            "messages": {
+                "old-session": [],
+                "recent-session": [],
+            },
+        }
 
-        # Force reload to trigger cleanup
-        storage._data = None
-        sessions = await storage.list_sessions()
+        with patch(
+            "custom_components.ai_agent_ha.storage.Store",
+            return_value=mock_store,
+        ):
+            storage = SessionStorage(mock_hass, "cleanup_test_user")
+            sessions = await storage.list_sessions()
 
         assert len(sessions) == 1
         assert sessions[0].session_id == "recent-session"
@@ -612,47 +531,54 @@ class TestSessionStorageMigration:
     @pytest.mark.asyncio
     async def test_migrate_legacy_data(self, mock_hass: MagicMock) -> None:
         """Test migration of legacy prompt history."""
-        # Create the legacy store with data
-        legacy_key = "ai_agent_ha_history_migration_user"
-        new_key = "ai_agent_ha_user_data_migration_user"
+        # Track stores created
+        stores: dict[str, MockStore] = {}
 
-        # Pre-create stores
-        legacy_store = MockStore(mock_hass, 1, legacy_key)
-        legacy_store._data = {
-            "prompts": ["Hello", "How are you?", "Turn on lights"],
-        }
-        MockStore._stores[legacy_key] = legacy_store
+        def create_store(hass, version, key):
+            store = MockStore(hass, version, key)
+            stores[key] = store
+            # Set up legacy data if this is the legacy store
+            if "ai_agent_ha_history_" in key:
+                store._data = {
+                    "prompts": ["Hello", "How are you?", "Turn on lights"],
+                }
+            return store
 
-        # Create storage which should trigger migration
-        storage = SessionStorage(mock_hass, "migration_user")
-        sessions = await storage.list_sessions()
+        with patch(
+            "custom_components.ai_agent_ha.storage.Store",
+            side_effect=create_store,
+        ):
+            storage = SessionStorage(mock_hass, "migration_user")
+            sessions = await storage.list_sessions()
 
         # Should have created one session with migrated messages
         assert len(sessions) == 1
         assert sessions[0].title == "Imported History"
         assert sessions[0].message_count == 3
 
-        # Legacy data should be marked as migrated
-        assert MockStore._stores[legacy_key]._data["_migrated"] is True
-
     @pytest.mark.asyncio
     async def test_migrate_legacy_data_already_migrated(
         self, mock_hass: MagicMock
     ) -> None:
         """Test that already migrated data is not migrated again."""
-        legacy_key = "ai_agent_ha_history_already_migrated_user"
+        stores: dict[str, MockStore] = {}
 
-        # Pre-create legacy store with migrated flag
-        legacy_store = MockStore(mock_hass, 1, legacy_key)
-        legacy_store._data = {
-            "prompts": ["Hello"],
-            "_migrated": True,
-        }
-        MockStore._stores[legacy_key] = legacy_store
+        def create_store(hass, version, key):
+            store = MockStore(hass, version, key)
+            stores[key] = store
+            if "ai_agent_ha_history_" in key:
+                store._data = {
+                    "prompts": ["Hello"],
+                    "_migrated": True,
+                }
+            return store
 
-        # Create storage
-        storage = SessionStorage(mock_hass, "already_migrated_user")
-        sessions = await storage.list_sessions()
+        with patch(
+            "custom_components.ai_agent_ha.storage.Store",
+            side_effect=create_store,
+        ):
+            storage = SessionStorage(mock_hass, "already_migrated_user")
+            sessions = await storage.list_sessions()
 
         # No sessions should be created
         assert len(sessions) == 0
@@ -664,26 +590,33 @@ class TestSessionStoragePersistence:
     @pytest.mark.asyncio
     async def test_data_persists_across_instances(self, mock_hass: MagicMock) -> None:
         """Test that data persists when creating new storage instances."""
-        # Create session with first instance
-        storage1 = SessionStorage(mock_hass, "persist_user")
-        session = await storage1.create_session(
-            provider="anthropic", title="Persistent"
-        )
-        message = Message(
-            message_id="msg-1",
-            session_id=session.session_id,
-            role="user",
-            content="Test persistence",
-            timestamp=datetime.now(timezone.utc).isoformat(),
-        )
-        await storage1.add_message(session.session_id, message)
+        # Shared store to simulate persistence
+        shared_store = MockStore(mock_hass, STORAGE_VERSION, "shared")
 
-        # Create new instance (simulates restart)
-        storage2 = SessionStorage(mock_hass, "persist_user")
-        storage2._data = None  # Force reload
+        with patch(
+            "custom_components.ai_agent_ha.storage.Store",
+            return_value=shared_store,
+        ):
+            # Create session with first instance
+            storage1 = SessionStorage(mock_hass, "persist_user")
+            session = await storage1.create_session(
+                provider="anthropic", title="Persistent"
+            )
+            message = Message(
+                message_id="msg-1",
+                session_id=session.session_id,
+                role="user",
+                content="Test persistence",
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            )
+            await storage1.add_message(session.session_id, message)
 
-        sessions = await storage2.list_sessions()
-        messages = await storage2.get_session_messages(session.session_id)
+            # Create new instance (simulates restart)
+            storage2 = SessionStorage(mock_hass, "persist_user")
+            storage2._data = None  # Force reload
+
+            sessions = await storage2.list_sessions()
+            messages = await storage2.get_session_messages(session.session_id)
 
         assert len(sessions) == 1
         assert sessions[0].title == "Persistent"

@@ -163,6 +163,23 @@ class TestToolResult:
         assert d["title"] == "Title"
         assert d["success"] is True
 
+    def test_to_dict_with_error(self):
+        """Test serialization with error field."""
+        result = ToolResult(
+            output="Failed",
+            success=False,
+            error="Error message",
+            title="Error Result",
+            metadata={"code": 500},
+        )
+
+        d = result.to_dict()
+        assert d["output"] == "Failed"
+        assert d["success"] is False
+        assert d["error"] == "Error message"
+        assert d["title"] == "Error Result"
+        assert d["metadata"] == {"code": 500}
+
 
 class TestToolRegistry:
     """Tests for ToolRegistry class."""
@@ -185,6 +202,41 @@ class TestToolRegistry:
         assert "test_tool" in ToolRegistry._tools
         assert ToolRegistry.get_tool_class("test_tool") is TestTool
 
+    def test_register_duplicate_tool(self):
+        """Test registering a tool with duplicate ID (line 291)."""
+        @ToolRegistry.register
+        class FirstTool(Tool):
+            id = "duplicate_id"
+            description = "First tool"
+
+            async def execute(self, **params):
+                return ToolResult(output="first", metadata={})
+
+        # Register another tool with the same ID - should log warning
+        @ToolRegistry.register
+        class SecondTool(Tool):
+            id = "duplicate_id"
+            description = "Second tool"
+
+            async def execute(self, **params):
+                return ToolResult(output="second", metadata={})
+
+        # The second tool should have overwritten the first
+        tool_class = ToolRegistry.get_tool_class("duplicate_id")
+        assert tool_class is SecondTool
+
+    def test_register_tool_without_id(self):
+        """Test registering a tool without an ID raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            @ToolRegistry.register
+            class BadTool(Tool):
+                description = "Missing ID"
+
+                async def execute(self, **params):
+                    return ToolResult(output="bad", metadata={})
+
+        assert "must define 'id'" in str(exc_info.value)
+
     def test_get_tool_instance(self):
         """Test getting tool instance."""
 
@@ -199,6 +251,50 @@ class TestToolRegistry:
         tool = ToolRegistry.get_tool("instance_test")
         assert tool is not None
         assert isinstance(tool, TestTool)
+
+    def test_get_tool_nonexistent(self):
+        """Test getting a nonexistent tool returns None."""
+        tool = ToolRegistry.get_tool("does_not_exist")
+        assert tool is None
+
+    def test_get_all_tools_with_disabled(self):
+        """Test get_all_tools filtering disabled tools (line 364)."""
+        @ToolRegistry.register
+        class EnabledTool(Tool):
+            id = "enabled_tool"
+            description = "Enabled"
+            enabled = True
+
+            async def execute(self, **params):
+                return ToolResult(output="enabled", metadata={})
+
+        @ToolRegistry.register
+        class DisabledTool(Tool):
+            id = "disabled_tool"
+            description = "Disabled"
+            enabled = False
+
+            async def execute(self, **params):
+                return ToolResult(output="disabled", metadata={})
+
+        # With enabled_only=True (default)
+        enabled_tools = ToolRegistry.get_all_tools(enabled_only=True)
+        enabled_ids = [t.id for t in enabled_tools]
+        assert "enabled_tool" in enabled_ids
+        assert "disabled_tool" not in enabled_ids
+
+        # With enabled_only=False
+        all_tools = ToolRegistry.get_all_tools(enabled_only=False)
+        all_ids = [t.id for t in all_tools]
+        assert "enabled_tool" in all_ids
+        assert "disabled_tool" in all_ids
+
+    def test_get_system_prompt_empty(self):
+        """Test get_system_prompt with no tools returns empty string (line 390)."""
+        # Clear registry to ensure no tools
+        ToolRegistry.clear()
+        prompt = ToolRegistry.get_system_prompt()
+        assert prompt == ""
 
     def test_list_tools(self):
         """Test listing tools."""
@@ -225,6 +321,38 @@ class TestToolRegistry:
         assert "tool1" in ids
         assert "tool2" in ids
 
+    def test_list_tools_with_disabled(self):
+        """Test list_tools filtering disabled tools (line 465)."""
+        @ToolRegistry.register
+        class EnabledTool(Tool):
+            id = "list_enabled"
+            description = "Enabled"
+            enabled = True
+
+            async def execute(self, **params):
+                return ToolResult(output="enabled", metadata={})
+
+        @ToolRegistry.register
+        class DisabledTool(Tool):
+            id = "list_disabled"
+            description = "Disabled"
+            enabled = False
+
+            async def execute(self, **params):
+                return ToolResult(output="disabled", metadata={})
+
+        # With enabled_only=True
+        enabled_list = ToolRegistry.list_tools(enabled_only=True)
+        enabled_ids = [t["id"] for t in enabled_list]
+        assert "list_enabled" in enabled_ids
+        assert "list_disabled" not in enabled_ids
+
+        # With enabled_only=False
+        all_list = ToolRegistry.list_tools(enabled_only=False)
+        all_ids = [t["id"] for t in all_list]
+        assert "list_enabled" in all_ids
+        assert "list_disabled" in all_ids
+
     @pytest.mark.asyncio
     async def test_execute_tool(self):
         """Test executing a tool through the registry."""
@@ -247,12 +375,225 @@ class TestToolRegistry:
         assert result.metadata["length"] == 5
 
     @pytest.mark.asyncio
+    async def test_execute_tool_validation_error(self):
+        """Test execute_tool with parameter validation errors (line 431)."""
+        @ToolRegistry.register
+        class ValidatedTool(Tool):
+            id = "validated"
+            description = "Tool with validation"
+            parameters = [
+                ToolParameter(
+                    name="required_param",
+                    type="string",
+                    description="Required parameter",
+                    required=True
+                )
+            ]
+
+            async def execute(self, required_param: str, **params):
+                return ToolResult(output=required_param, metadata={})
+
+        # Missing required parameter should raise ToolExecutionError
+        with pytest.raises(ToolExecutionError) as exc_info:
+            await ToolRegistry.execute_tool("validated", {})
+
+        assert "Invalid parameters" in str(exc_info.value)
+        assert exc_info.value.tool_id == "validated"
+        assert "validation_errors" in exc_info.value.details
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_reraise_tool_execution_error(self):
+        """Test execute_tool re-raises ToolExecutionError (lines 442-446)."""
+        @ToolRegistry.register
+        class FailingTool(Tool):
+            id = "failing"
+            description = "Tool that raises ToolExecutionError"
+
+            async def execute(self, **params):
+                raise ToolExecutionError(
+                    "Intentional failure",
+                    tool_id="failing",
+                    details={"reason": "test"}
+                )
+
+        # ToolExecutionError should be re-raised as-is
+        with pytest.raises(ToolExecutionError) as exc_info:
+            await ToolRegistry.execute_tool("failing", {})
+
+        assert "Intentional failure" in str(exc_info.value)
+        assert exc_info.value.tool_id == "failing"
+        assert exc_info.value.details["reason"] == "test"
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_generic_exception(self):
+        """Test execute_tool wraps generic exceptions (lines 444-450)."""
+        @ToolRegistry.register
+        class ExceptionTool(Tool):
+            id = "exception"
+            description = "Tool that raises generic exception"
+
+            async def execute(self, **params):
+                raise ValueError("Generic error")
+
+        # Generic exceptions should be wrapped in ToolExecutionError
+        with pytest.raises(ToolExecutionError) as exc_info:
+            await ToolRegistry.execute_tool("exception", {})
+
+        assert "Generic error" in str(exc_info.value)
+        assert exc_info.value.tool_id == "exception"
+        assert exc_info.value.details["exception_type"] == "ValueError"
+
+    @pytest.mark.asyncio
     async def test_execute_nonexistent_tool(self):
         """Test executing a tool that doesn't exist."""
         with pytest.raises(ToolExecutionError) as exc_info:
             await ToolRegistry.execute_tool("nonexistent", {})
 
         assert "not found" in str(exc_info.value)
+
+
+class TestToolMethods:
+    """Tests for Tool class methods."""
+
+    def setup_method(self):
+        """Clear registry before each test."""
+        ToolRegistry.clear()
+
+    def test_get_system_prompt_no_parameters(self):
+        """Test get_system_prompt with no parameters (lines 212-225)."""
+        @ToolRegistry.register
+        class NoParamTool(Tool):
+            id = "no_param"
+            description = "Tool without parameters"
+            parameters = []
+
+            async def execute(self, **params):
+                return ToolResult(output="result", metadata={})
+
+        tool = NoParamTool()
+        prompt = tool.get_system_prompt()
+        # Should have format: "- tool_id(): description"
+        assert "- no_param()" in prompt
+        assert "Tool without parameters" in prompt
+
+    def test_get_system_prompt_with_required_params(self):
+        """Test get_system_prompt with required parameters."""
+        @ToolRegistry.register
+        class RequiredParamTool(Tool):
+            id = "required_param"
+            description = "Tool with required params"
+            parameters = [
+                ToolParameter(name="arg1", type="string", description="First", required=True),
+                ToolParameter(name="arg2", type="int", description="Second", required=True),
+            ]
+
+            async def execute(self, **params):
+                return ToolResult(output="result", metadata={})
+
+        tool = RequiredParamTool()
+        prompt = tool.get_system_prompt()
+        assert "- required_param(arg1, arg2)" in prompt
+        assert "Tool with required params" in prompt
+
+    def test_get_system_prompt_with_optional_params(self):
+        """Test get_system_prompt with optional parameters."""
+        @ToolRegistry.register
+        class OptionalParamTool(Tool):
+            id = "optional_param"
+            description = "Tool with optional params"
+            parameters = [
+                ToolParameter(name="required", type="string", description="Required", required=True),
+                ToolParameter(name="optional", type="string", description="Optional", required=False, default="default_val"),
+                ToolParameter(name="optional_no_default", type="int", description="No default", required=False),
+            ]
+
+            async def execute(self, **params):
+                return ToolResult(output="result", metadata={})
+
+        tool = OptionalParamTool()
+        prompt = tool.get_system_prompt()
+        assert "- optional_param(" in prompt
+        assert "required" in prompt
+        assert "optional='default_val'" in prompt
+        assert "optional_no_default?" in prompt
+
+    def test_get_parameter_docs_no_parameters(self):
+        """Test get_parameter_docs with no parameters (lines 233-245)."""
+        @ToolRegistry.register
+        class NoParamDocTool(Tool):
+            id = "no_param_doc"
+            description = "Tool without parameters"
+            parameters = []
+
+            async def execute(self, **params):
+                return ToolResult(output="result", metadata={})
+
+        tool = NoParamDocTool()
+        docs = tool.get_parameter_docs()
+        assert docs == "No parameters."
+
+    def test_get_parameter_docs_with_parameters(self):
+        """Test get_parameter_docs with parameters."""
+        @ToolRegistry.register
+        class ParamDocTool(Tool):
+            id = "param_doc"
+            description = "Tool with parameters"
+            parameters = [
+                ToolParameter(name="url", type="string", description="The URL", required=True),
+                ToolParameter(name="format", type="string", description="Output format", required=False, default="markdown", enum=["markdown", "text"]),
+            ]
+
+            async def execute(self, **params):
+                return ToolResult(output="result", metadata={})
+
+        tool = ParamDocTool()
+        docs = tool.get_parameter_docs()
+        assert "url (string, required): The URL" in docs
+        assert "format (string, optional, default: 'markdown', options: ['markdown', 'text']): Output format" in docs
+
+    def test_validate_parameters_type_error(self):
+        """Test validate_parameters with type error (line 200)."""
+        @ToolRegistry.register
+        class TypedTool(Tool):
+            id = "typed"
+            description = "Tool with typed parameters"
+            parameters = [
+                ToolParameter(name="count", type="integer", description="Count", required=True),
+                ToolParameter(name="flag", type="boolean", description="Flag", required=True),
+            ]
+
+            async def execute(self, **params):
+                return ToolResult(output="result", metadata={})
+
+        tool = TypedTool()
+
+        # Invalid types should generate type error messages
+        errors = tool.validate_parameters({"count": "not an int", "flag": "not a bool"})
+        assert len(errors) == 2
+        assert any("Invalid type" in err and "count" in err for err in errors)
+        assert any("Invalid type" in err and "flag" in err for err in errors)
+
+    def test_validate_parameters_enum_error(self):
+        """Test validate_parameters with enum error."""
+        @ToolRegistry.register
+        class EnumTool(Tool):
+            id = "enum"
+            description = "Tool with enum parameter"
+            parameters = [
+                ToolParameter(name="format", type="string", description="Format", required=True, enum=["json", "xml"]),
+            ]
+
+            async def execute(self, **params):
+                return ToolResult(output="result", metadata={})
+
+        tool = EnumTool()
+
+        # Invalid enum value should generate enum error message
+        errors = tool.validate_parameters({"format": "invalid"})
+        assert len(errors) == 1
+        assert "Invalid value" in errors[0]
+        assert "must be one of" in errors[0]
+        assert "['json', 'xml']" in errors[0]
 
 
 class TestHTMLConversion:

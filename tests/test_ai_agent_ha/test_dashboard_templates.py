@@ -1,30 +1,16 @@
 """Tests for dashboard templates functionality."""
 
-import os
 import sys
 from unittest.mock import Mock, patch
 
 import pytest
 
-# Add the parent directory to the path for direct imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
-try:
-    from custom_components.ai_agent_ha.dashboard_templates import (
-        CARD_EXAMPLES,
-        COMMON_ICONS,
-        DASHBOARD_TEMPLATES,
-        get_template_for_entities,
-    )
-except ImportError:
-    # Fallback for local testing
-    DASHBOARD_TEMPLATES = {}
-    CARD_EXAMPLES = {}
-    COMMON_ICONS = {}
-
-    def get_template_for_entities(entities, dashboard_type="general"):
-        return {}
-
+from custom_components.ai_agent_ha.dashboard_templates import (
+    CARD_EXAMPLES,
+    COMMON_ICONS,
+    DASHBOARD_TEMPLATES,
+    get_template_for_entities,
+)
 
 class TestDashboardTemplates:
     """Test dashboard templates and related functionality."""

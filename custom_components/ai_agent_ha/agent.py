@@ -1792,6 +1792,70 @@ class AiAgentHaAgent:
                     sanitized[key] = value
         return sanitized
 
+    async def _validate_automation(
+        self, config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate automation configuration including triggers, conditions, and actions.
+
+        Args:
+            config: Automation configuration dictionary with trigger, condition, action keys.
+
+        Returns:
+            Dict with 'valid' boolean and optional 'errors' list.
+        """
+        errors: List[str] = []
+
+        # Validate triggers
+        triggers = config.get("trigger", [])
+        if not triggers:
+            errors.append("At least one trigger is required")
+        else:
+            for i, trigger in enumerate(triggers):
+                if not isinstance(trigger, dict):
+                    errors.append(f"Trigger {i} must be a dictionary")
+                    continue
+                platform = trigger.get("platform")
+                if not platform:
+                    errors.append(f"Trigger {i} missing 'platform' field")
+
+        # Validate conditions (optional but must be valid if present)
+        conditions = config.get("condition", [])
+        for i, condition in enumerate(conditions):
+            if not isinstance(condition, dict):
+                errors.append(f"Condition {i} must be a dictionary")
+                continue
+            condition_type = condition.get("condition")
+            if not condition_type:
+                errors.append(f"Condition {i} missing 'condition' field")
+
+        # Validate actions
+        actions = config.get("action", [])
+        if not actions:
+            errors.append("At least one action is required")
+        else:
+            for i, action in enumerate(actions):
+                if not isinstance(action, dict):
+                    errors.append(f"Action {i} must be a dictionary")
+                    continue
+
+                # Check if action has a service call
+                service = action.get("service")
+                if service:
+                    # Validate service format (domain.service)
+                    if "." not in service:
+                        errors.append(
+                            f"Action {i} has invalid service format: {service}"
+                        )
+                    else:
+                        domain, service_name = service.split(".", 1)
+                        # Check if service exists using has_service
+                        if not self.hass.services.has_service(domain, service_name):
+                            errors.append(
+                                f"Action {i} references unknown service: {service}"
+                            )
+
+        return {"valid": len(errors) == 0, "errors": errors if errors else None}
+
     async def get_entity_state(self, entity_id: str) -> Dict[str, Any]:
         """Get the state of a specific entity."""
         try:

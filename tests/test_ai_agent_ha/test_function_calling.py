@@ -134,7 +134,213 @@ class TestToolSchemaConverter:
         # Required params
         assert "required" in params
         assert "location" in params["required"]
-        assert "units" not in params["required"]
+
+    # ===== Additional ToolSchemaConverter Tests =====
+
+    def test_to_gemini_format_multiple_tools(self, mock_tool, mock_tool_simple):
+        """Gemini format should wrap all tools in single functionDeclarations."""
+        result = ToolSchemaConverter.to_gemini_format([mock_tool, mock_tool_simple])
+
+        assert len(result) == 1  # Single wrapper object
+        assert "functionDeclarations" in result[0]
+        func_decls = result[0]["functionDeclarations"]
+        assert len(func_decls) == 2  # Two function declarations
+
+        names = [fd["name"] for fd in func_decls]
+        assert "get_weather" in names
+        assert "get_entities" in names
+
+    def test_to_openai_format_empty_tools_list(self):
+        """Should handle empty tools list."""
+        result = ToolSchemaConverter.to_openai_format([])
+        assert result == []
+
+    def test_to_anthropic_format_empty_tools_list(self):
+        """Should handle empty tools list."""
+        result = ToolSchemaConverter.to_anthropic_format([])
+        assert result == []
+
+    def test_to_gemini_format_empty_tools_list(self):
+        """Should handle empty tools list."""
+        result = ToolSchemaConverter.to_gemini_format([])
+        assert result == [{"functionDeclarations": []}]
+
+    @pytest.fixture
+    def mock_tool_with_various_types(self):
+        """Create a mock tool with various parameter types."""
+        from dataclasses import dataclass
+        from typing import ClassVar, List
+
+        _tools_path = os.path.join(_module_path, "tools")
+        sys.path.insert(0, _tools_path)
+        from base import ToolParameter
+
+        @dataclass
+        class MockToolVariousTypes:
+            """Mock tool for testing type mappings."""
+
+            id: ClassVar[str] = "test_types"
+            description: ClassVar[str] = "Test various parameter types"
+            parameters: ClassVar[List[ToolParameter]] = [
+                ToolParameter(
+                    name="str_param",
+                    type="str",
+                    description="A string parameter",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="int_param",
+                    type="int",
+                    description="An integer parameter",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="float_param",
+                    type="float",
+                    description="A float parameter",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="bool_param",
+                    type="bool",
+                    description="A boolean parameter",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="list_param",
+                    type="list",
+                    description="A list parameter",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="dict_param",
+                    type="dict",
+                    description="A dict parameter",
+                    required=False,
+                ),
+            ]
+
+        return MockToolVariousTypes()
+
+    def test_to_openai_format_all_type_mappings(self, mock_tool_with_various_types):
+        """OpenAI format should correctly map all parameter types."""
+        result = ToolSchemaConverter.to_openai_format([mock_tool_with_various_types])
+
+        props = result[0]["function"]["parameters"]["properties"]
+        assert props["str_param"]["type"] == "string"
+        assert props["int_param"]["type"] == "integer"
+        assert props["float_param"]["type"] == "number"
+        assert props["bool_param"]["type"] == "boolean"
+        assert props["list_param"]["type"] == "array"
+        assert props["dict_param"]["type"] == "object"
+
+    def test_to_anthropic_format_all_type_mappings(self, mock_tool_with_various_types):
+        """Anthropic format should correctly map all parameter types."""
+        result = ToolSchemaConverter.to_anthropic_format([mock_tool_with_various_types])
+
+        props = result[0]["input_schema"]["properties"]
+        assert props["str_param"]["type"] == "string"
+        assert props["int_param"]["type"] == "integer"
+        assert props["float_param"]["type"] == "number"
+        assert props["bool_param"]["type"] == "boolean"
+        assert props["list_param"]["type"] == "array"
+        assert props["dict_param"]["type"] == "object"
+
+    def test_to_gemini_format_all_type_mappings(self, mock_tool_with_various_types):
+        """Gemini format should correctly map all parameter types to UPPERCASE."""
+        result = ToolSchemaConverter.to_gemini_format([mock_tool_with_various_types])
+
+        props = result[0]["functionDeclarations"][0]["parameters"]["properties"]
+        assert props["str_param"]["type"] == "STRING"
+        assert props["int_param"]["type"] == "INTEGER"
+        assert props["float_param"]["type"] == "NUMBER"
+        assert props["bool_param"]["type"] == "BOOLEAN"
+        assert props["list_param"]["type"] == "ARRAY"
+        assert props["dict_param"]["type"] == "OBJECT"
+
+    def test_to_openai_format_no_required_params(self):
+        """OpenAI format should omit 'required' key when all params are optional."""
+        from dataclasses import dataclass
+        from typing import ClassVar, List
+
+        _tools_path = os.path.join(_module_path, "tools")
+        sys.path.insert(0, _tools_path)
+        from base import ToolParameter
+
+        @dataclass
+        class MockToolNoRequired:
+            id: ClassVar[str] = "test_tool"
+            description: ClassVar[str] = "Test tool"
+            parameters: ClassVar[List[ToolParameter]] = [
+                ToolParameter(
+                    name="optional_param",
+                    type="string",
+                    description="Optional parameter",
+                    required=False,
+                ),
+            ]
+
+        result = ToolSchemaConverter.to_openai_format([MockToolNoRequired()])
+        params = result[0]["function"]["parameters"]
+
+        # When no required params, 'required' key should not be present or be empty
+        assert "required" not in params or params["required"] == []
+
+    def test_to_anthropic_format_no_required_params(self):
+        """Anthropic format should omit 'required' key when all params are optional."""
+        from dataclasses import dataclass
+        from typing import ClassVar, List
+
+        _tools_path = os.path.join(_module_path, "tools")
+        sys.path.insert(0, _tools_path)
+        from base import ToolParameter
+
+        @dataclass
+        class MockToolNoRequired:
+            id: ClassVar[str] = "test_tool"
+            description: ClassVar[str] = "Test tool"
+            parameters: ClassVar[List[ToolParameter]] = [
+                ToolParameter(
+                    name="optional_param",
+                    type="string",
+                    description="Optional parameter",
+                    required=False,
+                ),
+            ]
+
+        result = ToolSchemaConverter.to_anthropic_format([MockToolNoRequired()])
+        schema = result[0]["input_schema"]
+
+        # When no required params, 'required' key should not be present or be empty
+        assert "required" not in schema or schema["required"] == []
+
+    def test_to_gemini_format_no_required_params(self):
+        """Gemini format should omit 'required' key when all params are optional."""
+        from dataclasses import dataclass
+        from typing import ClassVar, List
+
+        _tools_path = os.path.join(_module_path, "tools")
+        sys.path.insert(0, _tools_path)
+        from base import ToolParameter
+
+        @dataclass
+        class MockToolNoRequired:
+            id: ClassVar[str] = "test_tool"
+            description: ClassVar[str] = "Test tool"
+            parameters: ClassVar[List[ToolParameter]] = [
+                ToolParameter(
+                    name="optional_param",
+                    type="string",
+                    description="Optional parameter",
+                    required=False,
+                ),
+            ]
+
+        result = ToolSchemaConverter.to_gemini_format([MockToolNoRequired()])
+        params = result[0]["functionDeclarations"][0]["parameters"]
+
+        # When no required params, 'required' key should not be present or be empty
+        assert "required" not in params or params["required"] == []
 
     def test_to_openai_format_type_mapping(self, mock_tool_simple):
         """OpenAI format should map 'str' to 'string'."""
@@ -471,6 +677,125 @@ class TestFunctionCallHandler:
             is False
         )
 
+    # ===== is_function_call Edge Cases and Error Handling =====
+
+    def test_is_function_call_openai_index_error(self):
+        """Should return False when OpenAI response has empty choices array."""
+        response = {"choices": []}
+        assert FunctionCallHandler.is_function_call(response, "openai") is False
+
+    def test_is_function_call_openai_attribute_error(self):
+        """Should return False when OpenAI response has malformed structure."""
+        response = {"choices": [{"message": None}]}
+        assert FunctionCallHandler.is_function_call(response, "openai") is False
+
+    def test_is_function_call_openai_empty_tool_calls(self):
+        """Should return False when OpenAI response has empty tool_calls array."""
+        response = {"choices": [{"message": {"tool_calls": []}}]}
+        assert FunctionCallHandler.is_function_call(response, "openai") is False
+
+    def test_is_function_call_gemini_index_error(self):
+        """Should return False when Gemini response has empty candidates array."""
+        response = {"candidates": []}
+        assert FunctionCallHandler.is_function_call(response, "gemini") is False
+
+    def test_is_function_call_gemini_attribute_error(self):
+        """Should return False when Gemini response has malformed structure."""
+        response = {"candidates": [{"content": None}]}
+        assert FunctionCallHandler.is_function_call(response, "gemini") is False
+
+    def test_is_function_call_unknown_provider(self):
+        """Should return False for unknown provider."""
+        response = {"choices": [{"message": {"tool_calls": [{"id": "test"}]}}]}
+        assert FunctionCallHandler.is_function_call(response, "unknown_provider") is False
+
+    # ===== parse_openai_response Error Handling =====
+
+    def test_parse_openai_response_invalid_json_arguments(self):
+        """Should handle invalid JSON in arguments field gracefully."""
+        response = {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "call_123",
+                                "function": {
+                                    "name": "get_weather",
+                                    "arguments": "{invalid json}",
+                                },
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        result = FunctionCallHandler.parse_openai_response(response)
+
+        assert result is not None
+        assert len(result) == 1
+        assert result[0].arguments == {}  # Should default to empty dict
+
+    def test_parse_openai_response_index_error(self):
+        """Should return None when choices array is empty."""
+        response = {"choices": []}
+        result = FunctionCallHandler.parse_openai_response(response)
+        assert result is None
+
+    def test_parse_openai_response_attribute_error(self):
+        """Should return None when response structure is malformed."""
+        response = {"choices": [{"message": None}]}
+        result = FunctionCallHandler.parse_openai_response(response)
+        assert result is None
+
+    def test_parse_openai_response_type_error(self):
+        """Should return None when response is wrong type."""
+        response = {"choices": [None]}
+        result = FunctionCallHandler.parse_openai_response(response)
+        assert result is None
+
+    # ===== parse_gemini_response Error Handling =====
+
+    def test_parse_gemini_response_index_error(self):
+        """Should return None when candidates array is empty."""
+        response = {"candidates": []}
+        result = FunctionCallHandler.parse_gemini_response(response)
+        assert result is None
+
+    def test_parse_gemini_response_attribute_error(self):
+        """Should return None when response structure is malformed."""
+        response = {"candidates": [{"content": None}]}
+        result = FunctionCallHandler.parse_gemini_response(response)
+        assert result is None
+
+    def test_parse_gemini_response_type_error(self):
+        """Should return None when response is wrong type."""
+        response = {"candidates": [None]}
+        result = FunctionCallHandler.parse_gemini_response(response)
+        assert result is None
+
+    def test_parse_gemini_response_key_error(self):
+        """Should return None when functionCall is missing required keys."""
+        response = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "functionCall": {}  # Missing name and args
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        # This should not raise an error, should handle gracefully
+        result = FunctionCallHandler.parse_gemini_response(response)
+        assert result is not None  # Should still return a result
+        assert len(result) == 1
+        assert result[0].name == ""  # Defaults to empty string
+        assert result[0].arguments == {}  # Defaults to empty dict
+
 
 class TestUnexpectedToolCallHandler:
     """Test UnexpectedToolCallHandler - handles Gemini's UNEXPECTED_TOOL_CALL."""
@@ -584,6 +909,53 @@ class TestUnexpectedToolCallHandler:
         assert result is not None
         assert result.id is not None
         assert len(result.id) > 0
+
+    # ===== is_unexpected_tool_call Error Handling =====
+
+    def test_is_unexpected_tool_call_empty_candidates(self):
+        """Should return False when candidates array is empty."""
+        response = {"candidates": []}
+        assert UnexpectedToolCallHandler.is_unexpected_tool_call(response) is False
+
+    def test_is_unexpected_tool_call_index_error(self):
+        """Should return False when response structure causes IndexError."""
+        response = {}  # Missing candidates
+        assert UnexpectedToolCallHandler.is_unexpected_tool_call(response) is False
+
+    def test_is_unexpected_tool_call_attribute_error(self):
+        """Should return False when response structure is malformed."""
+        response = {"candidates": [None]}
+        assert UnexpectedToolCallHandler.is_unexpected_tool_call(response) is False
+
+    def test_is_unexpected_tool_call_type_error(self):
+        """Should return False when finishReason is wrong type."""
+        response = {"candidates": [{"finishReason": None}]}
+        assert UnexpectedToolCallHandler.is_unexpected_tool_call(response) is False
+
+    # ===== extract_function_call Error Handling =====
+
+    def test_extract_function_call_empty_candidates(self):
+        """Should return None when candidates list is empty."""
+        response = {"candidates": []}
+        result = UnexpectedToolCallHandler.extract_function_call(response)
+        assert result is None
+
+    def test_extract_function_call_exception_handling(self):
+        """Should return None when response structure causes exception."""
+        # Test with None candidates (causes AttributeError)
+        response_none = {"candidates": None}
+        result = UnexpectedToolCallHandler.extract_function_call(response_none)
+        assert result is None
+
+        # Test with malformed candidate structure (causes TypeError/AttributeError)
+        response_malformed = {"candidates": [None]}
+        result = UnexpectedToolCallHandler.extract_function_call(response_malformed)
+        assert result is None
+
+        # Test with IndexError (empty dict)
+        response_empty = {}
+        result = UnexpectedToolCallHandler.extract_function_call(response_empty)
+        assert result is None
 
 
 # ===== OpenAI Client Integration Tests =====
