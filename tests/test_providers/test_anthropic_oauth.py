@@ -7,6 +7,7 @@ from custom_components.ai_agent_ha.providers.anthropic_oauth import (
     AnthropicOAuthProvider,
     CLAUDE_CODE_SYSTEM_PREFIX,
     ANTHROPIC_BETA_FLAGS,
+    USER_AGENT,
 )
 
 
@@ -311,9 +312,14 @@ class TestAnthropicOAuthProviderConstants:
 
     def test_beta_flags_include_oauth(self):
         """Test that beta flags include OAuth flag."""
-        assert "oauth" in ANTHROPIC_BETA_FLAGS
-        assert "claude-code" in ANTHROPIC_BETA_FLAGS
+        assert "oauth-2025-04-20" in ANTHROPIC_BETA_FLAGS
+        assert "interleaved-thinking" in ANTHROPIC_BETA_FLAGS
 
     def test_api_url_is_anthropic(self):
-        """Test that API URL points to Anthropic."""
+        """Test that API URL points to Anthropic with beta param."""
         assert "anthropic.com" in AnthropicOAuthProvider.API_URL
+        assert "beta=true" in AnthropicOAuthProvider.API_URL
+
+    def test_user_agent_matches_claude_cli(self):
+        """Test that user agent identifies as claude-cli."""
+        assert "claude-cli" in USER_AGENT

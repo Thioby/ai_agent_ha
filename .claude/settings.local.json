@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m py_compile:*)",
+      "Bash(wc:*)",
+      "WebSearch",
+      "Bash(python -m pytest tests/test_rag/ -v --tb=short)",
+      "Bash(python3 -m pytest:*)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(source venv/bin/activate)",
+      "Bash(venv/bin/pip install:*)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(.venv/bin/python -m pytest:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv run python:*)",
+      "Bash(pip3 show:*)",
+      "Bash(source:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(pip index:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

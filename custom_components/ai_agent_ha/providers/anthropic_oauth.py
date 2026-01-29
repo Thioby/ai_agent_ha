@@ -22,13 +22,11 @@ _LOGGER = logging.getLogger(__name__)
 # Required system prompt prefix for OAuth access to Claude models
 CLAUDE_CODE_SYSTEM_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
 
-# Beta headers required for OAuth
-ANTHROPIC_BETA_FLAGS = (
-    "oauth-2025-04-20,"
-    "claude-code-20250219,"
-    "interleaved-thinking-2025-05-14,"
-    "fine-grained-tool-streaming-2025-05-14"
-)
+# Beta headers required for OAuth (simplified as of Jan 2025)
+ANTHROPIC_BETA_FLAGS = "oauth-2025-04-20,interleaved-thinking-2025-05-14"
+
+# User agent matching claude-cli
+USER_AGENT = "claude-cli/2.1.2 (external, cli)"
 
 
 @ProviderRegistry.register("anthropic_oauth")
@@ -39,7 +37,8 @@ class AnthropicOAuthProvider(AIProvider):
     special system prompt prefixes and beta headers to work with Claude.
     """
 
-    API_URL = "https://api.anthropic.com/v1/messages"
+    # Note: ?beta=true query param is required for OAuth
+    API_URL = "https://api.anthropic.com/v1/messages?beta=true"
     ANTHROPIC_VERSION = "2023-06-01"
     DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
     DEFAULT_MAX_TOKENS = 8192
@@ -209,6 +208,7 @@ class AnthropicOAuthProvider(AIProvider):
             "content-type": "application/json",
             "anthropic-version": self.ANTHROPIC_VERSION,
             "anthropic-beta": ANTHROPIC_BETA_FLAGS,
+            "user-agent": USER_AGENT,
         }
 
         # Extract system message and convert messages
