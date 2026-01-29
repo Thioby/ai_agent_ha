@@ -49,6 +49,9 @@ from custom_components.ai_agent_ha.tools.ha_native import (
     GetStatistics,
     GetAreaRegistry,
     GetWeatherData,
+    GetAutomations,
+    GetScenes,
+    GetPersonData,
 )
 
 
@@ -1389,3 +1392,129 @@ class TestHaNativeGetWeatherData:
         data = json.loads(result.output)
         assert "current" in data
         assert data["current"]["temperature"] == 22
+
+
+class TestHaNativeGetAutomations:
+    """Test GetAutomations tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetAutomations()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_no_automations(self, tool, hass):
+        """Test execute with no automations."""
+        result = await tool.execute()
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert data == []
+
+    @pytest.mark.asyncio
+    async def test_execute_with_automations(self, tool, hass):
+        """Test execute with automations."""
+        hass.states.async_set(
+            "automation.morning_lights",
+            "on",
+            {
+                "friendly_name": "Morning Lights",
+                "last_triggered": "2024-01-15T07:30:00"
+            }
+        )
+        hass.states.async_set(
+            "automation.night_mode",
+            "off",
+            {"friendly_name": "Night Mode"}
+        )
+
+        result = await tool.execute()
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert len(data) == 2
+        entity_ids = [a["entity_id"] for a in data]
+        assert "automation.morning_lights" in entity_ids
+
+
+class TestHaNativeGetScenes:
+    """Test GetScenes tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetScenes()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_no_scenes(self, tool, hass):
+        """Test execute with no scenes."""
+        result = await tool.execute()
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert data == []
+
+    @pytest.mark.asyncio
+    async def test_execute_with_scenes(self, tool, hass):
+        """Test execute with scenes."""
+        hass.states.async_set(
+            "scene.movie_night",
+            "scening",
+            {
+                "friendly_name": "Movie Night",
+                "icon": "mdi:movie"
+            }
+        )
+
+        result = await tool.execute()
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["entity_id"] == "scene.movie_night"
+
+
+class TestHaNativeGetPersonData:
+    """Test GetPersonData tool."""
+
+    @pytest.fixture
+    def tool(self, hass):
+        """Create tool instance."""
+        tool = GetPersonData()
+        tool.hass = hass
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_execute_no_persons(self, tool, hass):
+        """Test execute with no persons."""
+        result = await tool.execute()
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert data == []
+
+    @pytest.mark.asyncio
+    async def test_execute_with_persons(self, tool, hass):
+        """Test execute with person data."""
+        hass.states.async_set(
+            "person.john",
+            "home",
+            {
+                "friendly_name": "John",
+                "latitude": 51.5074,
+                "longitude": -0.1278,
+                "source": "device_tracker.johns_phone"
+            }
+        )
+
+        result = await tool.execute()
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["entity_id"] == "person.john"
+        assert data[0]["state"] == "home"
