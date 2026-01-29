@@ -1,0 +1,190 @@
+"""Gemini AI provider implementation."""
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, Any
+
+from .base_client import BaseHTTPClient
+from .registry import ProviderRegistry
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
+_LOGGER = logging.getLogger(__name__)
+
+
+@ProviderRegistry.register("gemini")
+class GeminiProvider(BaseHTTPClient):
+    """Gemini AI provider using Google's Generative Language API.
+
+    This provider implements the BaseHTTPClient interface for Gemini,
+    handling message format conversion, tool conversion, and response parsing.
+    """
+
+    API_URL_TEMPLATE = (
+        "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    )
+    DEFAULT_MODEL = "gemini-2.5-flash"
+
+    def __init__(self, hass: HomeAssistant, config: dict[str, Any]) -> None:
+        """Initialize the Gemini provider.
+
+        Args:
+            hass: Home Assistant instance.
+            config: Provider configuration containing:
+                - token: Google API key
+                - model: Optional model name (default: gemini-2.5-flash)
+        """
+        super().__init__(hass, config)
+        self._model = config.get("model", self.DEFAULT_MODEL)
+
+    @property
+    def supports_tools(self) -> bool:
+        """Return True as Gemini supports function calling."""
+        return True
+
+    @property
+    def api_url(self) -> str:
+        """Return the API endpoint URL with model substituted.
+
+        Returns:
+            The full URL for the Gemini generateContent endpoint.
+        """
+        return self.API_URL_TEMPLATE.format(model=self._model)
+
+    def _build_headers(self) -> dict[str, str]:
+        """Build the HTTP headers for Gemini API requests.
+
+        Returns:
+            Dictionary with x-goog-api-key and Content-Type headers.
+        """
+        return {
+            "x-goog-api-key": self.config.get("token", ""),
+            "Content-Type": "application/json",
+        }
+
+    def _convert_messages(
+        self, messages: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """Convert OpenAI-style messages to Gemini format.
+
+        Gemini uses:
+        - 'user' role (same as OpenAI)
+        - 'model' role (instead of 'assistant')
+        - System messages are extracted for systemInstruction
+
+        Args:
+            messages: List of message dicts with 'role' and 'content'.
+
+        Returns:
+            Tuple of (contents list, system instruction text or None).
+        """
+        contents = []
+        system_instruction = None
+
+        for message in messages:
+            role = message.get("role", "user")
+            content = message.get("content", "")
+
+            if role == "system":
+                # Concatenate multiple system messages
+                if system_instruction is None:
+                    system_instruction = content
+                else:
+                    system_instruction += "\n\n" + content
+            elif role == "user":
+                contents.append({"role": "user", "parts": [{"text": content}]})
+            elif role == "assistant":
+                contents.append({"role": "model", "parts": [{"text": content}]})
+
+        return contents, system_instruction
+
+    def _convert_tools(self, openai_tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Convert OpenAI tool format to Gemini functionDeclarations format.
+
+        Args:
+            openai_tools: List of OpenAI-formatted tool definitions.
+
+        Returns:
+            List containing a single dict with 'functionDeclarations' key.
+        """
+        if not openai_tools:
+            return []
+
+        function_declarations = []
+        for tool in openai_tools:
+            if tool.get("type") == "function":
+                func = tool.get("function", {})
+                function_declarations.append({
+                    "name": func.get("name", ""),
+                    "description": func.get("description", ""),
+                    "parameters": func.get("parameters", {}),
+                })
+
+        return [{"functionDeclarations": function_declarations}]
+
+    def _build_payload(
+        self, messages: list[dict[str, Any]], **kwargs: Any
+    ) -> dict[str, Any]:
+        """Build the request payload for Gemini API.
+
+        Args:
+            messages: List of message dictionaries with role and content.
+            **kwargs: Additional arguments (e.g., tools for function calling).
+
+        Returns:
+            The request payload dictionary with contents and optional
+            systemInstruction and tools.
+        """
+        contents, system_instruction = self._convert_messages(messages)
+
+        payload: dict[str, Any] = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": self.config.get("temperature", 0.7),
+                "topP": self.config.get("top_p", 0.9),
+            },
+        }
+
+        # Add system instruction if present
+        if system_instruction:
+            payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+
+        # Convert and add tools if provided
+        tools = kwargs.get("tools")
+        if tools:
+            gemini_tools = self._convert_tools(tools)
+            if gemini_tools:
+                payload["tools"] = gemini_tools
+                _LOGGER.debug(
+                    "Added %d tools to Gemini request",
+                    len(gemini_tools[0].get("functionDeclarations", [])),
+                )
+
+        return payload
+
+    def _extract_response(self, response_data: dict[str, Any]) -> str:
+        """Extract the response text from Gemini API response.
+
+        Args:
+            response_data: The parsed JSON response from Gemini API.
+
+        Returns:
+            The extracted response text.
+
+        Raises:
+            ValueError: If no response is available in candidates.
+        """
+        candidates = response_data.get("candidates", [])
+
+        if not candidates:
+            raise ValueError("No response from Gemini API (empty candidates)")
+
+        candidate = candidates[0]
+        content = candidate.get("content", {})
+        parts = content.get("parts", [])
+
+        if parts:
+            return parts[0].get("text", "")
+
+        return ""
