@@ -11,6 +11,8 @@ from custom_components.ai_agent_ha.agent import (
     AnthropicClient,
     OpenRouterClient,
     LlamaClient,
+    AlterClient,
+    ZaiClient,
     sanitize_for_logging,
 )
 
@@ -1399,3 +1401,349 @@ class TestOpenAIClientGetResponse:
 
         # Should return string representation
         assert "choices" in result
+
+
+class TestOpenRouterClientGetResponse:
+    """Test OpenRouter client get_response functionality."""
+
+    def _create_mock_response(self, status=200, json_data=None, text_data=None):
+        """Helper to create a mock aiohttp response."""
+        mock_resp = MagicMock()
+        mock_resp.status = status
+        mock_resp.headers = {"Content-Type": "application/json"}
+
+        if json_data is not None:
+            mock_resp.json = AsyncMock(return_value=json_data)
+            mock_resp.text = AsyncMock(return_value=json.dumps(json_data))
+        elif text_data is not None:
+            mock_resp.text = AsyncMock(return_value=text_data)
+        else:
+            mock_resp.text = AsyncMock(return_value="")
+
+        return mock_resp
+
+    def test_openrouter_default_model(self):
+        """Test OpenRouterClient uses default model."""
+        client = OpenRouterClient("test-token")
+        assert client.model == "openai/gpt-4o"
+        assert client.api_url == "https://openrouter.ai/api/v1/chat/completions"
+
+    @pytest.mark.asyncio
+    async def test_openrouter_client_get_response_success(self):
+        """Test OpenRouterClient successful response."""
+        client = OpenRouterClient("test-token", "anthropic/claude-3")
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_resp = self._create_mock_response(
+            json_data={
+                "choices": [{"message": {"content": "Hello from OpenRouter!"}}]
+            }
+        )
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            post=MagicMock(return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_resp),
+                __aexit__=AsyncMock(return_value=None)
+            ))
+        ))
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            result = await client.get_response(messages)
+
+        assert result == "Hello from OpenRouter!"
+
+    @pytest.mark.asyncio
+    async def test_openrouter_client_get_response_http_error(self):
+        """Test OpenRouterClient handles HTTP error."""
+        client = OpenRouterClient("test-token", "anthropic/claude-3")
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_resp = self._create_mock_response(status=429, text_data="Rate limited")
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            post=MagicMock(return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_resp),
+                __aexit__=AsyncMock(return_value=None)
+            ))
+        ))
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            with pytest.raises(Exception) as exc_info:
+                await client.get_response(messages)
+
+        assert "429" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_openrouter_client_missing_choices(self):
+        """Test OpenRouterClient handles response without choices."""
+        client = OpenRouterClient("test-token", "anthropic/claude-3")
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_resp = self._create_mock_response(
+            json_data={"error": "something went wrong"}
+        )
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            post=MagicMock(return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_resp),
+                __aexit__=AsyncMock(return_value=None)
+            ))
+        ))
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            result = await client.get_response(messages)
+
+        # Should return string representation
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_openrouter_client_request_headers(self):
+        """Test OpenRouterClient sends correct headers."""
+        client = OpenRouterClient("test-token", "openai/gpt-4o")
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_resp = self._create_mock_response(
+            json_data={"choices": [{"message": {"content": "Hi"}}]}
+        )
+
+        captured_headers = None
+
+        def capture_post(url, **kwargs):
+            nonlocal captured_headers
+            captured_headers = kwargs.get("headers", {})
+            mock_post_ctx = MagicMock()
+            mock_post_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_post_ctx.__aexit__ = AsyncMock(return_value=None)
+            return mock_post_ctx
+
+        mock_session = MagicMock()
+        mock_session.post = capture_post
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            await client.get_response(messages)
+
+        assert "Bearer test-token" in captured_headers["Authorization"]
+        assert "HTTP-Referer" in captured_headers
+        assert "X-Title" in captured_headers
+
+
+class TestAlterClientGetResponse:
+    """Test Alter client get_response functionality."""
+
+    def _create_mock_response(self, status=200, json_data=None, text_data=None):
+        """Helper to create a mock aiohttp response."""
+        mock_resp = MagicMock()
+        mock_resp.status = status
+        mock_resp.headers = {"Content-Type": "application/json"}
+
+        if json_data is not None:
+            mock_resp.json = AsyncMock(return_value=json_data)
+            mock_resp.text = AsyncMock(return_value=json.dumps(json_data))
+        elif text_data is not None:
+            mock_resp.text = AsyncMock(return_value=text_data)
+        else:
+            mock_resp.text = AsyncMock(return_value="")
+
+        return mock_resp
+
+    def test_alter_client_initialization(self):
+        """Test AlterClient initialization."""
+        client = AlterClient("test-token", "alter-model")
+        assert client.token == "test-token"
+        assert client.model == "alter-model"
+        assert client.api_url == "https://alterhq.com/api/v1/chat/completions"
+
+    def test_alter_client_default_model(self):
+        """Test AlterClient uses empty default model."""
+        client = AlterClient("test-token")
+        assert client.model == ""
+
+    @pytest.mark.asyncio
+    async def test_alter_client_get_response_success(self):
+        """Test AlterClient successful response."""
+        client = AlterClient("test-token", "alter-model")
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_resp = self._create_mock_response(
+            json_data={
+                "choices": [{"message": {"content": "Hello from Alter!"}}]
+            }
+        )
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            post=MagicMock(return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_resp),
+                __aexit__=AsyncMock(return_value=None)
+            ))
+        ))
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            result = await client.get_response(messages)
+
+        assert result == "Hello from Alter!"
+
+    @pytest.mark.asyncio
+    async def test_alter_client_get_response_http_error(self):
+        """Test AlterClient handles HTTP error."""
+        client = AlterClient("test-token", "alter-model")
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_resp = self._create_mock_response(status=500, text_data="Server error")
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            post=MagicMock(return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_resp),
+                __aexit__=AsyncMock(return_value=None)
+            ))
+        ))
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            with pytest.raises(Exception) as exc_info:
+                await client.get_response(messages)
+
+        assert "500" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_alter_client_missing_choices(self):
+        """Test AlterClient handles response without choices."""
+        client = AlterClient("test-token", "alter-model")
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_resp = self._create_mock_response(
+            json_data={"data": "unexpected format"}
+        )
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            post=MagicMock(return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_resp),
+                __aexit__=AsyncMock(return_value=None)
+            ))
+        ))
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            result = await client.get_response(messages)
+
+        assert "data" in result
+
+
+class TestZaiClientGetResponse:
+    """Test Zai client get_response functionality."""
+
+    def _create_mock_response(self, status=200, json_data=None, text_data=None):
+        """Helper to create a mock aiohttp response."""
+        mock_resp = MagicMock()
+        mock_resp.status = status
+        mock_resp.headers = {"Content-Type": "application/json"}
+
+        if json_data is not None:
+            mock_resp.json = AsyncMock(return_value=json_data)
+            mock_resp.text = AsyncMock(return_value=json.dumps(json_data))
+        elif text_data is not None:
+            mock_resp.text = AsyncMock(return_value=text_data)
+        else:
+            mock_resp.text = AsyncMock(return_value="")
+
+        return mock_resp
+
+    def test_zai_client_initialization_general(self):
+        """Test ZaiClient initialization with general endpoint."""
+        client = ZaiClient("test-token", "glm-4.7", "general")
+        assert client.token == "test-token"
+        assert client.model == "glm-4.7"
+        assert client.endpoint_type == "general"
+        assert "paas/v4" in client.api_url
+        assert "coding" not in client.api_url
+
+    def test_zai_client_initialization_coding(self):
+        """Test ZaiClient initialization with coding endpoint."""
+        client = ZaiClient("test-token", "glm-4.7", "coding")
+        assert client.endpoint_type == "coding"
+        assert "coding/paas/v4" in client.api_url
+
+    @pytest.mark.asyncio
+    async def test_zai_client_get_response_success(self):
+        """Test ZaiClient successful response."""
+        client = ZaiClient("test-token", "glm-4.7", "general")
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_resp = self._create_mock_response(
+            json_data={
+                "choices": [{"message": {"content": "Hello from z.ai!"}}]
+            }
+        )
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            post=MagicMock(return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_resp),
+                __aexit__=AsyncMock(return_value=None)
+            ))
+        ))
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            result = await client.get_response(messages)
+
+        assert result == "Hello from z.ai!"
+
+    @pytest.mark.asyncio
+    async def test_zai_client_get_response_http_error(self):
+        """Test ZaiClient handles HTTP error."""
+        client = ZaiClient("test-token", "glm-4.7", "general")
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_resp = self._create_mock_response(status=403, text_data="Forbidden")
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            post=MagicMock(return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_resp),
+                __aexit__=AsyncMock(return_value=None)
+            ))
+        ))
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            with pytest.raises(Exception) as exc_info:
+                await client.get_response(messages)
+
+        assert "403" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_zai_client_missing_choices(self):
+        """Test ZaiClient handles response without choices."""
+        client = ZaiClient("test-token", "glm-4.7", "general")
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_resp = self._create_mock_response(
+            json_data={"result": "no choices here"}
+        )
+
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            post=MagicMock(return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_resp),
+                __aexit__=AsyncMock(return_value=None)
+            ))
+        ))
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
+            result = await client.get_response(messages)
+
+        assert "result" in result

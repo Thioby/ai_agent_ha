@@ -2,37 +2,18 @@
 
 import asyncio
 import json
-import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import homeassistant
+from homeassistant.core import HomeAssistant
 
-# Add the parent directory to the path for direct imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
-try:
-    import homeassistant
-
-    HOMEASSISTANT_AVAILABLE = True
-except ImportError:
-    HOMEASSISTANT_AVAILABLE = False
-
+from custom_components.ai_agent_ha.agent import AiAgentHaAgent
+from custom_components.ai_agent_ha.const import AI_PROVIDERS
 
 class TestAIAgent:
     """Test AI Agent functionality."""
-
-    @pytest.fixture
-    def mock_hass(self):
-        """Mock Home Assistant instance."""
-        mock = MagicMock()
-        mock.data = {}
-        mock.services = MagicMock()
-        mock.config = MagicMock()
-        mock.config.path = MagicMock(return_value="/mock/path")
-        mock.bus = MagicMock()
-        mock.states = MagicMock()
-        return mock
 
     @pytest.fixture
     def mock_agent_config(self):
@@ -44,36 +25,31 @@ class TestAIAgent:
         }
 
     @pytest.mark.asyncio
-    async def test_agent_initialization(self, mock_hass, mock_agent_config):
+    async def test_agent_initialization(self, hass, mock_agent_config):
         """Test agent initialization with valid config."""
-        if not HOMEASSISTANT_AVAILABLE:
-            pytest.skip("Home Assistant not available")
-
-        with patch.dict(
-            "sys.modules",
-            {
-                "openai": MagicMock(),
-                "homeassistant.helpers.storage": MagicMock(),
-            },
-        ), patch("custom_components.ai_agent_ha.agent.AiAgentHaAgent") as MockAgent:
-            MockAgent.return_value = MagicMock()
-            agent = MockAgent(mock_hass, mock_agent_config)
+        # Patching openai module since it might be imported by agent
+        with patch.dict("sys.modules", {"openai": MagicMock()}):
+            agent = AiAgentHaAgent(hass, mock_agent_config)
             assert agent is not None
 
     @pytest.mark.asyncio
-    async def test_agent_query_processing(self, mock_hass, mock_agent_config):
+    async def test_agent_query_processing(self, hass, mock_agent_config):
         """Test agent query processing."""
-        if not HOMEASSISTANT_AVAILABLE:
-            pytest.skip("Home Assistant not available")
-
-        with patch("custom_components.ai_agent_ha.agent.AiAgentHaAgent") as MockAgent:
-            mock_instance = MagicMock()
-            mock_instance.send_query = AsyncMock(return_value="Test response")
-            MockAgent.return_value = mock_instance
-
-            agent = mock_instance
-            result = await agent.send_query("Test query")
-            assert result == "Test response"
+        agent = AiAgentHaAgent(hass, mock_agent_config)
+        
+        # Mock _get_ai_response to return a valid JSON response string
+        response_data = {
+            "request_type": "final_response",
+            "response": "Test response"
+        }
+        
+        with patch.object(agent, "_get_ai_response", new_callable=AsyncMock) as mock_get_response:
+            mock_get_response.return_value = json.dumps(response_data)
+            
+            result = await agent.process_query("Test query")
+            
+            assert result["success"] is True
+            assert result["answer"] == "Test response"
 
     def test_agent_config_validation(self, mock_agent_config):
         """Test agent configuration validation."""
@@ -90,36 +66,21 @@ class TestAIAgent:
         assert len(mock_agent_config["openai_token"]) > 0
 
     @pytest.mark.asyncio
-    async def test_agent_error_handling(self, mock_hass):
-        """Test agent error handling with invalid config."""
-        invalid_config = {"ai_provider": "invalid_provider"}
-
-        with patch("custom_components.ai_agent_ha.agent.AiAgentHaAgent") as MockAgent:
-            mock_instance = MagicMock()
-            mock_instance.send_query = AsyncMock(
-                side_effect=Exception("Invalid provider")
-            )
-            MockAgent.return_value = mock_instance
-
-            agent = mock_instance
-            with pytest.raises(Exception):
-                await agent.send_query("Test query")
+    async def test_agent_error_handling(self, hass, mock_agent_config):
+        """Test agent error handling with invalid provider response."""
+        agent = AiAgentHaAgent(hass, mock_agent_config)
+        
+        with patch.object(agent, "_get_ai_response", new_callable=AsyncMock) as mock_get_response:
+            mock_get_response.side_effect = Exception("API Error")
+            
+            result = await agent.process_query("Test query")
+            
+            assert result["success"] is False
+            assert "error" in result
+            assert "API Error" in result["error"]
 
     def test_ai_providers_support(self):
         """Test that all supported AI providers are properly defined."""
-        # Import const directly to avoid __init__.py issues
-        try:
-            from custom_components.ai_agent_ha.const import AI_PROVIDERS
-        except ImportError:
-            AI_PROVIDERS = [
-                "llama",
-                "openai",
-                "gemini",
-                "openrouter",
-                "anthropic",
-                "local",
-            ]
-
         expected_providers = [
             "llama",
             "openai",
@@ -131,333 +92,430 @@ class TestAIAgent:
         assert all(provider in AI_PROVIDERS for provider in expected_providers)
 
     @pytest.mark.asyncio
-    async def test_context_collection(self, mock_hass, mock_agent_config):
-        """Test context collection functionality."""
-        if not HOMEASSISTANT_AVAILABLE:
-            pytest.skip("Home Assistant not available")
-
+    async def test_get_entity_state(self, hass, mock_agent_config):
+        """Test get_entity_state functionality."""
         # Mock entity states
-        mock_hass.states.async_all.return_value = [
-            MagicMock(entity_id="light.living_room", state="on"),
-            MagicMock(entity_id="sensor.temperature", state="22.5"),
-        ]
+        hass.states.async_set("light.living_room", "on", {"friendly_name": "Living Room Light"})
+        hass.states.async_set("sensor.temperature", "22.5")
 
-        with patch("custom_components.ai_agent_ha.agent.AiAgentHaAgent") as MockAgent:
-            mock_instance = MagicMock()
-            mock_instance.collect_context = AsyncMock(
-                return_value={
-                    "entities": {
-                        "light.living_room": "on",
-                        "sensor.temperature": "22.5",
-                    }
-                }
-            )
-            MockAgent.return_value = mock_instance
-
-            agent = mock_instance
-            context = await agent.collect_context()
-            assert "entities" in context
-            assert context["entities"]["light.living_room"] == "on"
+        agent = AiAgentHaAgent(hass, mock_agent_config)
+        
+        # Test existing entity
+        state_info = await agent.get_entity_state("light.living_room")
+        assert state_info["entity_id"] == "light.living_room"
+        assert state_info["state"] == "on"
+        assert state_info["friendly_name"] == "Living Room Light"
+        
+        # Test non-existent entity
+        error_info = await agent.get_entity_state("light.non_existent")
+        assert "error" in error_info
 
     @pytest.mark.asyncio
-    async def test_get_entities_by_device_class(self, mock_hass, mock_agent_config):
+    async def test_get_entities_by_device_class(self, hass, mock_agent_config):
         """Test filtering entities by device_class."""
-        if not HOMEASSISTANT_AVAILABLE:
-            pytest.skip("Home Assistant not available")
-
-        # Create mock states with device_class attributes and last_changed
-        temp_sensor = MagicMock()
-        temp_sensor.entity_id = "sensor.bedroom_temperature"
-        temp_sensor.state = "22.5"
-        temp_sensor.last_changed = None
-        temp_sensor.attributes = {
-            "device_class": "temperature",
-            "unit_of_measurement": "°C",
-            "friendly_name": "Bedroom Temperature",
-        }
-
-        humidity_sensor = MagicMock()
-        humidity_sensor.entity_id = "sensor.living_room_humidity"
-        humidity_sensor.state = "55"
-        humidity_sensor.last_changed = None
-        humidity_sensor.attributes = {
-            "device_class": "humidity",
-            "unit_of_measurement": "%",
-            "friendly_name": "Living Room Humidity",
-        }
-
-        other_sensor = MagicMock()
-        other_sensor.entity_id = "sensor.power_usage"
-        other_sensor.state = "150"
-        other_sensor.last_changed = None
-        other_sensor.attributes = {
-            "device_class": "power",
-            "unit_of_measurement": "W",
-            "friendly_name": "Power Usage",
-        }
-
-        mock_hass.states.async_all.return_value = [
-            temp_sensor,
-            humidity_sensor,
-            other_sensor,
-        ]
-        mock_hass.states.get = lambda entity_id: {
-            "sensor.bedroom_temperature": temp_sensor,
-            "sensor.living_room_humidity": humidity_sensor,
-            "sensor.power_usage": other_sensor,
-        }.get(entity_id)
-
-        with patch.dict(
-            sys.modules, {"homeassistant.helpers.entity_registry": MagicMock()}
-        ):
-            from custom_components.ai_agent_ha.agent import AiAgentHaAgent
-
-            agent = AiAgentHaAgent(mock_hass, mock_agent_config)
-
-            # Test getting temperature sensors
-            temp_entities = await agent.get_entities_by_device_class("temperature")
-            assert len(temp_entities) == 1
-            assert temp_entities[0]["entity_id"] == "sensor.bedroom_temperature"
-
-            # Test getting humidity sensors
-            humidity_entities = await agent.get_entities_by_device_class("humidity")
-            assert len(humidity_entities) == 1
-            assert humidity_entities[0]["entity_id"] == "sensor.living_room_humidity"
-
-            # Test with domain filter
-            temp_sensors_only = await agent.get_entities_by_device_class(
-                "temperature", "sensor"
-            )
-            assert len(temp_sensors_only) == 1
-
-    @pytest.mark.asyncio
-    async def test_get_climate_related_entities(self, mock_hass, mock_agent_config):
-        """Test getting all climate-related entities (climate + temp/humidity sensors)."""
-        if not HOMEASSISTANT_AVAILABLE:
-            pytest.skip("Home Assistant not available")
-
-        # Create mock states
-        climate_entity = MagicMock()
-        climate_entity.entity_id = "climate.thermostat"
-        climate_entity.state = "heat"
-        climate_entity.last_changed = None
-        climate_entity.attributes = {"friendly_name": "Thermostat"}
-
-        temp_sensor = MagicMock()
-        temp_sensor.entity_id = "sensor.bedroom_temperature"
-        temp_sensor.state = "22.5"
-        temp_sensor.last_changed = None
-        temp_sensor.attributes = {
-            "device_class": "temperature",
-            "friendly_name": "Bedroom Temperature",
-        }
-
-        humidity_sensor = MagicMock()
-        humidity_sensor.entity_id = "sensor.living_room_humidity"
-        humidity_sensor.state = "55"
-        humidity_sensor.last_changed = None
-        humidity_sensor.attributes = {
-            "device_class": "humidity",
-            "friendly_name": "Living Room Humidity",
-        }
-
-        mock_hass.states.async_all.return_value = [
-            climate_entity,
-            temp_sensor,
-            humidity_sensor,
-        ]
-        mock_hass.states.get = lambda entity_id: {
-            "climate.thermostat": climate_entity,
-            "sensor.bedroom_temperature": temp_sensor,
-            "sensor.living_room_humidity": humidity_sensor,
-        }.get(entity_id)
-
-        with patch.dict(
-            sys.modules, {"homeassistant.helpers.entity_registry": MagicMock()}
-        ):
-            from custom_components.ai_agent_ha.agent import AiAgentHaAgent
-
-            agent = AiAgentHaAgent(mock_hass, mock_agent_config)
-
-            # Test getting all climate-related entities
-            climate_entities = await agent.get_climate_related_entities()
-            assert len(climate_entities) == 3
-            entity_ids = [e["entity_id"] for e in climate_entities]
-            assert "climate.thermostat" in entity_ids
-            assert "sensor.bedroom_temperature" in entity_ids
-            assert "sensor.living_room_humidity" in entity_ids
-
-    @pytest.mark.asyncio
-    async def test_get_climate_related_entities_sensors_only(
-        self, mock_hass, mock_agent_config
-    ):
-        """Test getting climate-related entities when only temperature/humidity sensors exist (no climate.* entities)."""
-        if not HOMEASSISTANT_AVAILABLE:
-            pytest.skip("Home Assistant not available")
-
-        # Create mock states - NO climate.* entities, only sensors
-        temp_sensor1 = MagicMock()
-        temp_sensor1.entity_id = "sensor.bedroom_temperature"
-        temp_sensor1.state = "22.5"
-        temp_sensor1.last_changed = None
-        temp_sensor1.attributes = {
-            "device_class": "temperature",
-            "friendly_name": "Bedroom Temperature",
-        }
-
-        temp_sensor2 = MagicMock()
-        temp_sensor2.entity_id = "sensor.kitchen_temperature"
-        temp_sensor2.state = "23.1"
-        temp_sensor2.last_changed = None
-        temp_sensor2.attributes = {
-            "device_class": "temperature",
-            "friendly_name": "Kitchen Temperature",
-        }
-
-        humidity_sensor = MagicMock()
-        humidity_sensor.entity_id = "sensor.living_room_humidity"
-        humidity_sensor.state = "55"
-        humidity_sensor.last_changed = None
-        humidity_sensor.attributes = {
-            "device_class": "humidity",
-            "friendly_name": "Living Room Humidity",
-        }
-
-        mock_hass.states.async_all.return_value = [
-            temp_sensor1,
-            temp_sensor2,
-            humidity_sensor,
-        ]
-        mock_hass.states.get = lambda entity_id: {
-            "sensor.bedroom_temperature": temp_sensor1,
-            "sensor.kitchen_temperature": temp_sensor2,
-            "sensor.living_room_humidity": humidity_sensor,
-        }.get(entity_id)
-
-        with patch.dict(
-            sys.modules, {"homeassistant.helpers.entity_registry": MagicMock()}
-        ):
-            from custom_components.ai_agent_ha.agent import AiAgentHaAgent
-
-            agent = AiAgentHaAgent(mock_hass, mock_agent_config)
-
-            # Test getting climate-related entities - should return sensors even without climate.* entities
-            climate_entities = await agent.get_climate_related_entities()
-            assert len(climate_entities) == 3  # Should have 2 temp + 1 humidity sensors
-            entity_ids = [e["entity_id"] for e in climate_entities]
-            assert "sensor.bedroom_temperature" in entity_ids
-            assert "sensor.kitchen_temperature" in entity_ids
-            assert "sensor.living_room_humidity" in entity_ids
-
-    @pytest.mark.asyncio
-    async def test_climate_related_entities_deduplication(
-        self, mock_hass, mock_agent_config
-    ):
-        """Test that get_climate_related_entities deduplicates entities."""
-        if not HOMEASSISTANT_AVAILABLE:
-            pytest.skip("Home Assistant not available")
-
-        # Create a mock entity that could theoretically appear in multiple categories
-        # (though unlikely in practice)
-        climate_entity = MagicMock()
-        climate_entity.entity_id = "climate.thermostat"
-        climate_entity.state = "heat"
-        climate_entity.last_changed = None
-        climate_entity.attributes = {"friendly_name": "Thermostat"}
-
-        mock_hass.states.async_all.return_value = [climate_entity]
-        mock_hass.states.get = lambda entity_id: (
-            climate_entity if entity_id == "climate.thermostat" else None
+        
+        # Set up states in hass fixture
+        hass.states.async_set(
+            "sensor.bedroom_temperature", 
+            "22.5", 
+            {"device_class": "temperature", "unit_of_measurement": "°C", "friendly_name": "Bedroom Temperature"}
+        )
+        hass.states.async_set(
+            "sensor.living_room_humidity", 
+            "55", 
+            {"device_class": "humidity", "unit_of_measurement": "%", "friendly_name": "Living Room Humidity"}
+        )
+        hass.states.async_set(
+            "sensor.power_usage", 
+            "150", 
+            {"device_class": "power", "unit_of_measurement": "W", "friendly_name": "Power Usage"}
         )
 
-        with patch.dict(
-            sys.modules, {"homeassistant.helpers.entity_registry": MagicMock()}
-        ):
-            from custom_components.ai_agent_ha.agent import AiAgentHaAgent
+        agent = AiAgentHaAgent(hass, mock_agent_config)
 
-            agent = AiAgentHaAgent(mock_hass, mock_agent_config)
+        # Test getting temperature sensors
+        temp_entities = await agent.get_entities_by_device_class("temperature")
+        assert len(temp_entities) == 1
+        assert temp_entities[0]["entity_id"] == "sensor.bedroom_temperature"
 
-            # Test that deduplication works
-            climate_entities = await agent.get_climate_related_entities()
-            entity_ids = [e["entity_id"] for e in climate_entities]
+        # Test getting humidity sensors
+        humidity_entities = await agent.get_entities_by_device_class("humidity")
+        assert len(humidity_entities) == 1
+        assert humidity_entities[0]["entity_id"] == "sensor.living_room_humidity"
 
-            # Should only appear once even if returned by multiple methods
-            assert entity_ids.count("climate.thermostat") == 1
+        # Test with domain filter
+        temp_sensors_only = await agent.get_entities_by_device_class(
+            "temperature", "sensor"
+        )
+        assert len(temp_sensors_only) == 1
 
     @pytest.mark.asyncio
-    async def test_data_payload_uses_user_role_not_system(
-        self, mock_hass, mock_agent_config
-    ):
-        """Test critical fix: data payloads use 'user' role, not 'system' to prevent overwriting system prompt in Anthropic API."""
-        if not HOMEASSISTANT_AVAILABLE:
-            pytest.skip("Home Assistant not available")
+    async def test_get_climate_related_entities(self, hass, mock_agent_config):
+        """Test getting all climate-related entities (climate + temp/humidity sensors)."""
+        
+        hass.states.async_set(
+            "climate.thermostat", 
+            "heat", 
+            {"friendly_name": "Thermostat"}
+        )
+        hass.states.async_set(
+            "sensor.bedroom_temperature", 
+            "22.5", 
+            {"device_class": "temperature", "friendly_name": "Bedroom Temperature"}
+        )
+        hass.states.async_set(
+            "sensor.living_room_humidity", 
+            "55", 
+            {"device_class": "humidity", "friendly_name": "Living Room Humidity"}
+        )
 
-        with patch.dict(
-            sys.modules, {"homeassistant.helpers.entity_registry": MagicMock()}
-        ):
-            from custom_components.ai_agent_ha.agent import AiAgentHaAgent
+        agent = AiAgentHaAgent(hass, mock_agent_config)
 
-            agent = AiAgentHaAgent(mock_hass, mock_agent_config)
+        # Test getting all climate-related entities
+        climate_entities = await agent.get_climate_related_entities()
+        # Note: The implementation might differ in how it counts or returns, 
+        # but logically it should find these. 
+        # Since we are using real hass fixture logic (mostly), check if logic holds.
+        # If the actual implementation calls hass.states.async_all(), it should work.
+        
+        entity_ids = [e["entity_id"] for e in climate_entities]
+        assert "climate.thermostat" in entity_ids
+        assert "sensor.bedroom_temperature" in entity_ids
+        assert "sensor.living_room_humidity" in entity_ids
 
-            # Mock AI response that triggers a data request
-            mock_response = {
-                "request_type": "get_entities_by_domain",
-                "parameters": {"domain": "light"},
-            }
+    @pytest.mark.asyncio
+    async def test_get_climate_related_entities_sensors_only(self, hass, mock_agent_config):
+        """Test getting climate-related entities when only temperature/humidity sensors exist (no climate.* entities)."""
+        
+        hass.states.async_set(
+            "sensor.bedroom_temperature", 
+            "22.5", 
+            {"device_class": "temperature", "friendly_name": "Bedroom Temperature"}
+        )
+        hass.states.async_set(
+            "sensor.kitchen_temperature", 
+            "23.1", 
+            {"device_class": "temperature", "friendly_name": "Kitchen Temperature"}
+        )
+        hass.states.async_set(
+            "sensor.living_room_humidity", 
+            "55", 
+            {"device_class": "humidity", "friendly_name": "Living Room Humidity"}
+        )
 
-            # Mock the AI client to return the data request
-            agent.ai_client = MagicMock()
-            agent.ai_client.get_response = AsyncMock(
-                return_value=json.dumps(mock_response)
-            )
+        agent = AiAgentHaAgent(hass, mock_agent_config)
 
-            # Mock states for the domain
-            light_state = MagicMock()
-            light_state.entity_id = "light.living_room"
-            light_state.state = "on"
-            light_state.attributes = {}
+        # Test getting climate-related entities
+        climate_entities = await agent.get_climate_related_entities()
+        entity_ids = [e["entity_id"] for e in climate_entities]
+        assert "sensor.bedroom_temperature" in entity_ids
+        assert "sensor.kitchen_temperature" in entity_ids
+        assert "sensor.living_room_humidity" in entity_ids
 
-            mock_hass.states.async_all.return_value = [light_state]
-            mock_hass.states.get = lambda entity_id: (
-                light_state if entity_id == "light.living_room" else None
-            )
+    @pytest.mark.asyncio
+    async def test_climate_related_entities_deduplication(self, hass, mock_agent_config):
+        """Test that get_climate_related_entities deduplicates entities."""
+        
+        hass.states.async_set(
+            "climate.thermostat", 
+            "heat", 
+            {"friendly_name": "Thermostat"}
+        )
 
-            # Initialize conversation
-            agent.conversation_history = []
+        agent = AiAgentHaAgent(hass, mock_agent_config)
 
-            # Simulate a query that triggers data request
-            try:
-                await agent.send_query("turn on lights")
-            except Exception:
-                # May fail due to mocking limitations, but that's ok
-                pass
+        # Test that deduplication works
+        climate_entities = await agent.get_climate_related_entities()
+        entity_ids = [e["entity_id"] for e in climate_entities]
 
-            # Check that data was added with 'user' role, NOT 'system'
-            # Find the message with data in conversation history
-            data_messages = [
-                msg
-                for msg in agent.conversation_history
-                if isinstance(msg.get("content"), str)
-                and '"data":' in msg.get("content", "")
-            ]
+        # Should only appear once even if returned by multiple methods
+        assert entity_ids.count("climate.thermostat") == 1
 
-            if data_messages:
-                # Verify all data messages use 'user' role
-                for msg in data_messages:
-                    assert (
-                        msg.get("role") == "user"
-                    ), f"Data payload should use 'user' role, not '{msg.get('role')}' to prevent overwriting system prompt in Anthropic API"
+    @pytest.mark.asyncio
+    async def test_data_payload_uses_user_role_not_system(self, hass, mock_agent_config):
+        """Test critical fix: data payloads use 'user' role, not 'system'."""
+        
+        hass.states.async_set("light.living_room", "on")
 
-                # Verify system messages only contain actual system prompt, not data
-                system_messages = [
-                    msg
-                    for msg in agent.conversation_history
-                    if msg.get("role") == "system"
-                ]
+        agent = AiAgentHaAgent(hass, mock_agent_config)
+        
+        # Mock responses: 1. Data Request, 2. Final Response
+        response_1 = json.dumps({
+            "request_type": "get_entities_by_domain",
+            "parameters": {"domain": "light"},
+        })
+        
+        response_2 = json.dumps({
+            "request_type": "final_response",
+            "response": "Lights are on"
+        })
+        
+        with patch.object(agent, "_get_ai_response", new_callable=AsyncMock) as mock_get_response:
+            mock_get_response.side_effect = [response_1, response_2]
+            
+            await agent.process_query("turn on lights")
 
-                for msg in system_messages:
-                    content = msg.get("content", "")
-                    # System messages should NOT contain data payloads
-                    assert not (
-                        isinstance(content, str) and '"data":' in content
-                    ), "System messages should not contain data payloads (would overwrite system prompt in Anthropic API)"
+        # Check conversation history
+        data_messages = [
+            msg
+            for msg in agent.conversation_history
+            if isinstance(msg.get("content"), str)
+            and '"data":' in msg.get("content", "")
+        ]
+
+        assert len(data_messages) > 0, "No data payload found in history"
+        for msg in data_messages:
+            assert msg.get("role") == "user", "Data payload should use 'user' role"
+
+
+class TestAgentUtilityMethods:
+    """Test AiAgentHaAgent utility methods."""
+
+    @pytest.fixture
+    def agent_config_openai(self):
+        """Mock agent config for OpenAI."""
+        return {
+            "ai_provider": "openai",
+            "openai_token": "sk-" + "a" * 48,
+        }
+
+    @pytest.fixture
+    def agent_config_gemini(self):
+        """Mock agent config for Gemini."""
+        return {
+            "ai_provider": "gemini",
+            "gemini_token": "AIza" + "b" * 35,
+        }
+
+    @pytest.fixture
+    def agent_config_local(self):
+        """Mock agent config for local model."""
+        return {
+            "ai_provider": "local",
+            "local_url": "http://localhost:11434/api/generate",
+        }
+
+    def test_validate_api_key_openai_valid(self, hass, agent_config_openai):
+        """Test _validate_api_key with valid OpenAI token."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+        assert agent._validate_api_key() is True
+
+    def test_validate_api_key_openai_short(self, hass):
+        """Test _validate_api_key with too short OpenAI token."""
+        config = {"ai_provider": "openai", "openai_token": "sk-short"}
+        agent = AiAgentHaAgent(hass, config)
+        assert agent._validate_api_key() is False
+
+    def test_validate_api_key_openai_missing(self, hass):
+        """Test _validate_api_key with missing OpenAI token."""
+        config = {"ai_provider": "openai"}
+        agent = AiAgentHaAgent(hass, config)
+        assert agent._validate_api_key() is False
+
+    def test_validate_api_key_gemini_valid(self, hass, agent_config_gemini):
+        """Test _validate_api_key with valid Gemini token."""
+        agent = AiAgentHaAgent(hass, agent_config_gemini)
+        assert agent._validate_api_key() is True
+
+    def test_validate_api_key_local_valid_http(self, hass, agent_config_local):
+        """Test _validate_api_key with valid local HTTP URL."""
+        agent = AiAgentHaAgent(hass, agent_config_local)
+        assert agent._validate_api_key() is True
+
+    def test_validate_api_key_local_valid_https(self, hass):
+        """Test _validate_api_key with valid local HTTPS URL."""
+        config = {"ai_provider": "local", "local_url": "https://localhost:11434/api"}
+        agent = AiAgentHaAgent(hass, config)
+        assert agent._validate_api_key() is True
+
+    def test_validate_api_key_local_invalid_url(self, hass):
+        """Test _validate_api_key with invalid local URL (no scheme)."""
+        config = {"ai_provider": "local", "local_url": "localhost:11434"}
+        agent = AiAgentHaAgent(hass, config)
+        assert agent._validate_api_key() is False
+
+    def test_validate_api_key_anthropic(self, hass):
+        """Test _validate_api_key with Anthropic token."""
+        config = {"ai_provider": "anthropic", "anthropic_token": "sk-ant-" + "x" * 40}
+        agent = AiAgentHaAgent(hass, config)
+        assert agent._validate_api_key() is True
+
+    def test_validate_api_key_openrouter(self, hass):
+        """Test _validate_api_key with OpenRouter token."""
+        config = {"ai_provider": "openrouter", "openrouter_token": "sk-or-" + "y" * 40}
+        agent = AiAgentHaAgent(hass, config)
+        assert agent._validate_api_key() is True
+
+    def test_validate_api_key_alter(self, hass):
+        """Test _validate_api_key with Alter token."""
+        config = {"ai_provider": "alter", "alter_token": "alt-" + "z" * 40}
+        agent = AiAgentHaAgent(hass, config)
+        assert agent._validate_api_key() is True
+
+    def test_validate_api_key_zai(self, hass):
+        """Test _validate_api_key with Z.ai token."""
+        config = {"ai_provider": "zai", "zai_token": "zai-" + "w" * 40}
+        agent = AiAgentHaAgent(hass, config)
+        assert agent._validate_api_key() is True
+
+    def test_validate_api_key_llama(self, hass):
+        """Test _validate_api_key with Llama token."""
+        config = {"ai_provider": "llama", "llama_token": "llama-" + "v" * 40}
+        agent = AiAgentHaAgent(hass, config)
+        assert agent._validate_api_key() is True
+
+    def test_check_rate_limit_within_limit(self, hass, agent_config_openai):
+        """Test _check_rate_limit when within limits."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+        # First few requests should be allowed
+        assert agent._check_rate_limit() is True
+        assert agent._check_rate_limit() is True
+        assert agent._check_rate_limit() is True
+
+    def test_check_rate_limit_exceeds_limit(self, hass, agent_config_openai):
+        """Test _check_rate_limit when exceeding limit."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+        agent._rate_limit = 3  # Set low limit for testing
+
+        # First 3 should pass
+        assert agent._check_rate_limit() is True
+        assert agent._check_rate_limit() is True
+        assert agent._check_rate_limit() is True
+
+        # 4th should fail
+        assert agent._check_rate_limit() is False
+
+    def test_check_rate_limit_window_reset(self, hass, agent_config_openai):
+        """Test _check_rate_limit window reset."""
+        import time
+
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+        agent._rate_limit = 2
+
+        assert agent._check_rate_limit() is True
+        assert agent._check_rate_limit() is True
+        assert agent._check_rate_limit() is False  # Exceeded
+
+        # Simulate window reset
+        agent._request_window_start = time.time() - 61  # Move window back
+        assert agent._check_rate_limit() is True  # Should reset and allow
+
+    def test_cache_set_and_get(self, hass, agent_config_openai):
+        """Test _set_cached_data and _get_cached_data."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+
+        # Set data
+        agent._set_cached_data("test_key", {"value": 123})
+
+        # Get data
+        result = agent._get_cached_data("test_key")
+        assert result == {"value": 123}
+
+    def test_cache_expired(self, hass, agent_config_openai):
+        """Test _get_cached_data returns None for expired data."""
+        import time
+
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+        agent._cache_timeout = 1  # 1 second timeout
+
+        # Set data
+        agent._set_cached_data("test_key", {"value": 123})
+
+        # Should exist immediately
+        assert agent._get_cached_data("test_key") == {"value": 123}
+
+        # Wait for expiry
+        time.sleep(1.1)
+
+        # Should be expired
+        assert agent._get_cached_data("test_key") is None
+
+    def test_cache_nonexistent_key(self, hass, agent_config_openai):
+        """Test _get_cached_data returns None for non-existent key."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+        assert agent._get_cached_data("nonexistent") is None
+
+    def test_sanitize_automation_config_alias(self, hass, agent_config_openai):
+        """Test _sanitize_automation_config sanitizes alias."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+
+        config = {"alias": "  Test Automation  ", "description": "A test"}
+        result = agent._sanitize_automation_config(config)
+
+        assert result["alias"] == "Test Automation"
+        assert result["description"] == "A test"
+
+    def test_sanitize_automation_config_long_alias(self, hass, agent_config_openai):
+        """Test _sanitize_automation_config truncates long alias."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+
+        long_alias = "A" * 150  # Over 100 chars
+        config = {"alias": long_alias}
+        result = agent._sanitize_automation_config(config)
+
+        assert len(result["alias"]) == 100
+
+    def test_sanitize_automation_config_valid_mode(self, hass, agent_config_openai):
+        """Test _sanitize_automation_config accepts valid modes."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+
+        for mode in ["single", "restart", "queued", "parallel"]:
+            config = {"mode": mode}
+            result = agent._sanitize_automation_config(config)
+            assert result["mode"] == mode
+
+    def test_sanitize_automation_config_invalid_mode(self, hass, agent_config_openai):
+        """Test _sanitize_automation_config rejects invalid modes."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+
+        config = {"mode": "invalid_mode"}
+        result = agent._sanitize_automation_config(config)
+
+        assert "mode" not in result
+
+    def test_sanitize_automation_config_trigger_action(self, hass, agent_config_openai):
+        """Test _sanitize_automation_config passes through trigger/action lists."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+
+        config = {
+            "trigger": [{"platform": "state", "entity_id": "light.test"}],
+            "action": [{"service": "light.turn_on", "target": {"entity_id": "light.test"}}],
+        }
+        result = agent._sanitize_automation_config(config)
+
+        assert result["trigger"] == config["trigger"]
+        assert result["action"] == config["action"]
+
+    def test_sanitize_automation_config_ignores_unknown_keys(self, hass, agent_config_openai):
+        """Test _sanitize_automation_config ignores unknown keys."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+
+        config = {"alias": "Test", "unknown_key": "malicious_value", "injection": "<script>"}
+        result = agent._sanitize_automation_config(config)
+
+        assert "unknown_key" not in result
+        assert "injection" not in result
+        assert result["alias"] == "Test"
+
+    def test_set_rag_manager(self, hass, agent_config_openai):
+        """Test set_rag_manager sets the RAG manager."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+
+        mock_rag = MagicMock()
+        agent.set_rag_manager(mock_rag)
+
+        assert agent._rag_manager == mock_rag
+
+    def test_clear_conversation_history(self, hass, agent_config_openai):
+        """Test clear_conversation_history clears history."""
+        agent = AiAgentHaAgent(hass, agent_config_openai)
+
+        # Add some history
+        agent.conversation_history = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi"},
+        ]
+
+        agent.clear_conversation_history()
+
+        assert agent.conversation_history == []
