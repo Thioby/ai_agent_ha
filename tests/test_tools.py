@@ -675,6 +675,160 @@ class TestWebSearchTool:
         errors = self.tool.validate_parameters({"query": "test", "type": "auto"})
         assert len(errors) == 0
 
+    @pytest.mark.asyncio
+    async def test_search_client_error(self):
+        """Test handling of client errors."""
+        import aiohttp
+
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_session_instance = MagicMock()
+            mock_session_instance.post.side_effect = aiohttp.ClientError("Connection failed")
+            mock_session_instance.__aenter__ = AsyncMock(
+                return_value=mock_session_instance
+            )
+            mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+            mock_session.return_value = mock_session_instance
+
+            result = await self.tool.execute(query="test")
+
+            assert result.success is False
+            assert "failed" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_search_unexpected_exception(self):
+        """Test handling of unexpected exceptions."""
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_session_instance = MagicMock()
+            mock_session_instance.post.side_effect = RuntimeError("Unexpected error")
+            mock_session_instance.__aenter__ = AsyncMock(
+                return_value=mock_session_instance
+            )
+            mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+            mock_session.return_value = mock_session_instance
+
+            result = await self.tool.execute(query="test")
+
+            assert result.success is False
+            assert "error" in result.error.lower()
+
+
+class TestSimpleWebSearchTool:
+    """Tests for SimpleWebSearchTool (fallback)."""
+
+    def setup_method(self):
+        """Setup test fixtures."""
+        from custom_components.ai_agent_ha.tools.websearch import SimpleWebSearchTool
+        self.tool = SimpleWebSearchTool()
+
+    def test_tool_metadata(self):
+        """Test tool metadata."""
+        assert self.tool.id == "web_search_simple"
+        assert self.tool.category == ToolCategory.WEB
+        assert self.tool.enabled is False  # Disabled by default
+
+    @pytest.mark.asyncio
+    async def test_search_success(self):
+        """Test successful simple web search."""
+        mock_html = '''
+        <html>
+        <body>
+            <a class="result__a" href="https://example.com">Example Title</a>
+            <a class="result__a" href="https://test.com">Test Title</a>
+        </body>
+        </html>
+        '''
+
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.text = AsyncMock(return_value=mock_html)
+
+            mock_context = AsyncMock()
+            mock_context.__aenter__.return_value = mock_response
+            mock_context.__aexit__.return_value = None
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.get.return_value = mock_context
+            mock_session_instance.__aenter__ = AsyncMock(
+                return_value=mock_session_instance
+            )
+            mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+            mock_session.return_value = mock_session_instance
+
+            result = await self.tool.execute(query="test query")
+
+            assert result.success is True
+            assert "test query" in result.output.lower()
+
+    @pytest.mark.asyncio
+    async def test_search_no_results(self):
+        """Test search with no matching results."""
+        mock_html = '<html><body><p>No search results</p></body></html>'
+
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.text = AsyncMock(return_value=mock_html)
+
+            mock_context = AsyncMock()
+            mock_context.__aenter__.return_value = mock_response
+            mock_context.__aexit__.return_value = None
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.get.return_value = mock_context
+            mock_session_instance.__aenter__ = AsyncMock(
+                return_value=mock_session_instance
+            )
+            mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+            mock_session.return_value = mock_session_instance
+
+            result = await self.tool.execute(query="test query")
+
+            assert result.success is False
+            assert "no results" in result.output.lower() or "no results" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_search_http_error(self):
+        """Test handling of HTTP error."""
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_response = AsyncMock()
+            mock_response.status = 403
+            mock_response.text = AsyncMock(return_value="Forbidden")
+
+            mock_context = AsyncMock()
+            mock_context.__aenter__.return_value = mock_response
+            mock_context.__aexit__.return_value = None
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.get.return_value = mock_context
+            mock_session_instance.__aenter__ = AsyncMock(
+                return_value=mock_session_instance
+            )
+            mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+            mock_session.return_value = mock_session_instance
+
+            result = await self.tool.execute(query="test")
+
+            assert result.success is False
+            assert "403" in result.error
+
+    @pytest.mark.asyncio
+    async def test_search_exception(self):
+        """Test handling of exceptions."""
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_session_instance = MagicMock()
+            mock_session_instance.get.side_effect = Exception("Connection error")
+            mock_session_instance.__aenter__ = AsyncMock(
+                return_value=mock_session_instance
+            )
+            mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+            mock_session.return_value = mock_session_instance
+
+            result = await self.tool.execute(query="test")
+
+            assert result.success is False
+            assert "failed" in result.error.lower()
+
 
 class TestToolSystemPrompt:
     """Tests for system prompt generation."""
