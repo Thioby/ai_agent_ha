@@ -232,13 +232,18 @@ class GetHistory(Tool):
 
         try:
             from datetime import datetime, timedelta
+            from homeassistant.components.recorder import get_instance
             from homeassistant.components.recorder.history import get_significant_states
+            from homeassistant.util import dt as dt_util
 
-            start_time = datetime.now() - timedelta(hours=hours)
-            end_time = datetime.now()
+            # Use timezone-aware datetimes
+            end_time = dt_util.utcnow()
+            start_time = end_time - timedelta(hours=hours)
 
-            # Get history using the recorder history module
-            history_data = await self.hass.async_add_executor_job(
+            # Get recorder instance and use its executor for database access
+            recorder_instance = get_instance(self.hass)
+
+            history_data = await recorder_instance.async_add_executor_job(
                 get_significant_states,
                 self.hass,
                 start_time,
@@ -417,13 +422,14 @@ class GetStatistics(Tool):
             return ToolResult(output="Entity ID is required", error="Missing entity_id", success=False)
 
         try:
-            from homeassistant.components import recorder
+            from homeassistant.components.recorder import get_instance
             import homeassistant.components.recorder.statistics as stats_module
 
-            if not self.hass.data.get(recorder.DATA_INSTANCE):
+            recorder_instance = get_instance(self.hass)
+            if not recorder_instance:
                 return ToolResult(output="Recorder component is not available", error="No recorder", success=False)
 
-            stats = await self.hass.async_add_executor_job(
+            stats = await recorder_instance.async_add_executor_job(
                 stats_module.get_last_short_term_statistics,
                 self.hass,
                 1,
