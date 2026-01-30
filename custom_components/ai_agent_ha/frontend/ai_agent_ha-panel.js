@@ -53,6 +53,8 @@ class AiAgentHaPanel extends LitElement {
       _selectedProvider: { type: String, reflect: false, attribute: false },
       _availableProviders: { type: Array, reflect: false, attribute: false },
       _showProviderDropdown: { type: Boolean, reflect: false, attribute: false },
+      _selectedModel: { type: String, reflect: false, attribute: false },
+      _availableModels: { type: Array, reflect: false, attribute: false },
       _showThinking: { type: Boolean, reflect: false, attribute: false },
       _thinkingExpanded: { type: Boolean, reflect: false, attribute: false },
       _debugInfo: { type: Object, reflect: false, attribute: false },
@@ -973,6 +975,8 @@ class AiAgentHaPanel extends LitElement {
     this._selectedProvider = null;
     this._availableProviders = [];
     this._showProviderDropdown = false;
+    this._selectedModel = null;
+    this._availableModels = [];
     this.providersLoaded = false;
     this._eventSubscriptionSetup = false;
     this._serviceCallTimeout = null;
@@ -1229,6 +1233,8 @@ class AiAgentHaPanel extends LitElement {
             providers.length > 0
           ) {
             this._selectedProvider = providers[0].value;
+            // Fetch models for the initially selected provider
+            this._fetchAvailableModels(this._selectedProvider);
           }
         } else {
           this._availableProviders = [];
@@ -1415,7 +1421,7 @@ class AiAgentHaPanel extends LitElement {
 
             <div class="input-footer">
               <div class="provider-selector">
-                <span class="provider-label">Model:</span>
+                <span class="provider-label">Provider:</span>
                 <select
                   class="provider-button"
                   @change=${(e) => this._selectProvider(e.target.value)}
@@ -1431,6 +1437,25 @@ class AiAgentHaPanel extends LitElement {
                   `)}
                 </select>
               </div>
+              ${this._availableModels.length > 0 ? html`
+              <div class="provider-selector">
+                <span class="provider-label">Model:</span>
+                <select
+                  class="provider-button"
+                  @change=${(e) => this._selectModel(e.target.value)}
+                  .value=${this._selectedModel || ''}
+                >
+                  ${this._availableModels.map(model => html`
+                    <option
+                      value=${model.id}
+                      ?selected=${model.id === this._selectedModel}
+                    >
+                      ${model.name}
+                    </option>
+                  `)}
+                </select>
+              </div>
+              ` : ''}
               <label class="thinking-toggle">
                 <input
                   type="checkbox"
@@ -1482,6 +1507,29 @@ class AiAgentHaPanel extends LitElement {
 
   async _selectProvider(provider) {
     this._selectedProvider = provider;
+    await this._fetchAvailableModels(provider);
+    this.requestUpdate();
+  }
+
+  async _fetchAvailableModels(provider) {
+    try {
+      const result = await this.hass.callWS({
+        type: "ai_agent_ha/models/list",
+        provider: provider
+      });
+      this._availableModels = result.models || [];
+      // Select default model or first available
+      const defaultModel = this._availableModels.find(m => m.default);
+      this._selectedModel = defaultModel ? defaultModel.id : (this._availableModels[0]?.id || null);
+    } catch (e) {
+      console.warn("Could not fetch available models:", e);
+      this._availableModels = [];
+      this._selectedModel = null;
+    }
+  }
+
+  _selectModel(modelId) {
+    this._selectedModel = modelId;
     this.requestUpdate();
   }
 
@@ -1528,13 +1576,18 @@ class AiAgentHaPanel extends LitElement {
     this._messages = [...this._messages, { type: 'user', text: prompt }];
     
     try {
-      const result = await this.hass.callWS({
+      const wsParams = {
         type: "ai_agent_ha/chat/send",
         session_id: this._activeSessionId,
         message: prompt,
         provider: this._selectedProvider,
         debug: this._showThinking
-      });
+      };
+      // Add model if selected (for providers that support model selection)
+      if (this._selectedModel) {
+        wsParams.model = this._selectedModel;
+      }
+      const result = await this.hass.callWS(wsParams);
 
       this._clearLoadingState();
 

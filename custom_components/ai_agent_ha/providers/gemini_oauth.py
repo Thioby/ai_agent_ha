@@ -34,6 +34,14 @@ GEMINI_CODE_ASSIST_METADATA = {
     "pluginType": "GEMINI",
 }
 
+# Available Gemini models for Cloud Code Assist API
+GEMINI_AVAILABLE_MODELS = [
+    "gemini-3-pro-preview",  # Default, highest quality
+    "gemini-3-flash",        # Fast, good quality
+    "gemini-2.5-pro",        # Previous generation pro
+    "gemini-2.5-flash",      # Fast, 90% of pro quality
+]
+
 
 @ProviderRegistry.register("gemini_oauth")
 class GeminiOAuthProvider(AIProvider):
@@ -543,18 +551,31 @@ class GeminiOAuthProvider(AIProvider):
 
         Args:
             messages: List of message dictionaries with role and content.
-            **kwargs: Additional arguments (e.g., tools for function calling).
+            **kwargs: Additional arguments:
+                - tools: List of tools for function calling.
+                - model: Optional model override (must be in GEMINI_AVAILABLE_MODELS).
 
         Returns:
             The AI response as a string.
         """
+        # Allow per-request model override
+        model = kwargs.get("model") or self._model
+        if model not in GEMINI_AVAILABLE_MODELS:
+            _LOGGER.warning(
+                "Model '%s' not in available models, using default '%s'",
+                model,
+                self.DEFAULT_MODEL,
+            )
+            model = self.DEFAULT_MODEL
+
         _LOGGER.info(
-            "GeminiOAuthProvider.get_response called. managed_project_id: %s",
+            "GeminiOAuthProvider.get_response called. managed_project_id: %s, model: %s",
             self._oauth_data.get("managed_project_id", "NOT_SET"),
+            model,
         )
         access_token = await self._get_valid_token()
 
-        _LOGGER.debug("Making OAuth request to Gemini API with model: %s", self._model)
+        _LOGGER.debug("Making OAuth request to Gemini API with model: %s", model)
 
         # Convert messages to Gemini format
         gemini_contents, system_instruction = self._convert_messages(messages)
@@ -592,7 +613,7 @@ class GeminiOAuthProvider(AIProvider):
             # Wrap payload as per Cloud Code API expectation
             wrapped_payload = {
                 "project": project_id,
-                "model": self._model,
+                "model": model,
                 "request": request_payload,
             }
 
@@ -609,7 +630,7 @@ class GeminiOAuthProvider(AIProvider):
             _LOGGER.debug(
                 "Gemini OAuth wrapped payload: project=%s, model=%s",
                 project_id,
-                self._model,
+                model,
             )
 
             # Execute request with retry for 429 and 5xx errors

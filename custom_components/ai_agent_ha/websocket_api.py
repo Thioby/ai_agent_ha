@@ -80,6 +80,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_delete_session)
     websocket_api.async_register_command(hass, ws_rename_session)
     websocket_api.async_register_command(hass, ws_send_message)
+    websocket_api.async_register_command(hass, ws_get_available_models)
 
 
 def _get_user_id(connection: websocket_api.ActiveConnection) -> str:
@@ -252,6 +253,7 @@ async def ws_rename_session(
         vol.Required("session_id"): _validate_session_id,
         vol.Required("message"): _validate_message,
         vol.Optional("provider"): str,
+        vol.Optional("model"): str,
         vol.Optional("debug"): vol.Coerce(bool),
     }
 )
@@ -313,6 +315,7 @@ async def ws_send_message(
                 result = await agent.process_query(
                     msg["message"],
                     provider=provider,
+                    model=msg.get("model"),
                     debug=msg.get("debug", False),
                     conversation_history=conversation_history,
                 )
@@ -368,3 +371,66 @@ async def ws_send_message(
             "Failed to send message in session %s for user %s", session_id, user_id
         )
         connection.send_error(msg["id"], ERR_STORAGE_ERROR, "Failed to send message")
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ai_agent_ha/models/list",
+        vol.Optional("provider"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_get_available_models(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get available models for a provider.
+
+    Returns a list of available models with their descriptions.
+    Currently only gemini_oauth supports model selection.
+    """
+    provider = msg.get("provider", "gemini_oauth")
+
+    # Model definitions with descriptions
+    models_by_provider = {
+        "gemini_oauth": [
+            {
+                "id": "gemini-3-pro-preview",
+                "name": "Gemini 3 Pro",
+                "description": "Highest quality, best for complex tasks",
+                "default": True,
+            },
+            {
+                "id": "gemini-3-flash",
+                "name": "Gemini 3 Flash",
+                "description": "Fast responses, good quality",
+                "default": False,
+            },
+            {
+                "id": "gemini-2.5-pro",
+                "name": "Gemini 2.5 Pro",
+                "description": "Previous generation, stable",
+                "default": False,
+            },
+            {
+                "id": "gemini-2.5-flash",
+                "name": "Gemini 2.5 Flash",
+                "description": "Fastest, 90% of pro quality",
+                "default": False,
+            },
+        ],
+        # Other providers can be added here
+        "anthropic": [],
+        "openai": [],
+    }
+
+    models = models_by_provider.get(provider, [])
+    connection.send_result(
+        msg["id"],
+        {
+            "provider": provider,
+            "models": models,
+            "supports_model_selection": len(models) > 0,
+        },
+    )

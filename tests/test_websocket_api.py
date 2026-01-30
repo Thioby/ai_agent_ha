@@ -23,6 +23,7 @@ from custom_components.ai_agent_ha.websocket_api import (
     ws_list_sessions,
     ws_rename_session,
     ws_send_message,
+    ws_get_available_models,
     _get_user_id,
     _validate_session_id,
     _validate_title,
@@ -45,6 +46,8 @@ if hasattr(ws_rename_session, "__wrapped__"):
     ws_rename_session = ws_rename_session.__wrapped__
 if hasattr(ws_send_message, "__wrapped__"):
     ws_send_message = ws_send_message.__wrapped__
+if hasattr(ws_get_available_models, "__wrapped__"):
+    ws_get_available_models = ws_get_available_models.__wrapped__
 
 
 class MockUser:
@@ -764,3 +767,68 @@ class TestUserIsolation:
 
         assert len(result_b["sessions"]) == 1
         assert result_b["sessions"][0]["title"] == "B's session"
+
+
+class TestWsGetAvailableModels:
+    """Tests for ws_get_available_models handler."""
+
+    @pytest.mark.asyncio
+    async def test_get_models_gemini_oauth(self, hass: HomeAssistant) -> None:
+        """Test getting available models for gemini_oauth provider."""
+        mock_connection = MockConnection(MockUser())
+
+        msg = {
+            "id": 1,
+            "type": "ai_agent_ha/models/list",
+            "provider": "gemini_oauth",
+        }
+        await ws_get_available_models(hass, mock_connection, msg)
+
+        msg_id, result = mock_connection.results[0]
+        assert msg_id == 1
+        assert result["provider"] == "gemini_oauth"
+        assert result["supports_model_selection"] is True
+        assert len(result["models"]) > 0
+
+        # Verify expected models are present
+        model_ids = [m["id"] for m in result["models"]]
+        assert "gemini-3-pro-preview" in model_ids
+        assert "gemini-3-flash" in model_ids
+        assert "gemini-2.5-flash" in model_ids
+
+        # Verify default model is marked
+        default_models = [m for m in result["models"] if m.get("default")]
+        assert len(default_models) == 1
+        assert default_models[0]["id"] == "gemini-3-pro-preview"
+
+    @pytest.mark.asyncio
+    async def test_get_models_default_provider(self, hass: HomeAssistant) -> None:
+        """Test getting models without specifying provider uses gemini_oauth."""
+        mock_connection = MockConnection(MockUser())
+
+        msg = {
+            "id": 1,
+            "type": "ai_agent_ha/models/list",
+        }
+        await ws_get_available_models(hass, mock_connection, msg)
+
+        msg_id, result = mock_connection.results[0]
+        assert result["provider"] == "gemini_oauth"
+        assert result["supports_model_selection"] is True
+
+    @pytest.mark.asyncio
+    async def test_get_models_anthropic_no_selection(self, hass: HomeAssistant) -> None:
+        """Test that anthropic provider doesn't support model selection yet."""
+        mock_connection = MockConnection(MockUser())
+
+        msg = {
+            "id": 1,
+            "type": "ai_agent_ha/models/list",
+            "provider": "anthropic",
+        }
+        await ws_get_available_models(hass, mock_connection, msg)
+
+        msg_id, result = mock_connection.results[0]
+        assert result["provider"] == "anthropic"
+        assert result["supports_model_selection"] is False
+        assert result["models"] == []

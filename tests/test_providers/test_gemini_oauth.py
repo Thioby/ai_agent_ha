@@ -9,6 +9,7 @@ from custom_components.ai_agent_ha.providers.gemini_oauth import (
     GEMINI_CODE_ASSIST_ENDPOINT,
     GEMINI_CODE_ASSIST_HEADERS,
     GEMINI_CODE_ASSIST_METADATA,
+    GEMINI_AVAILABLE_MODELS,
 )
 
 
@@ -358,3 +359,134 @@ class TestGeminiOAuthProviderConstants:
     def test_metadata_includes_plugin_type(self):
         """Test that metadata includes plugin type."""
         assert GEMINI_CODE_ASSIST_METADATA["pluginType"] == "GEMINI"
+
+    def test_available_models_defined(self):
+        """Test that available models list is defined."""
+        assert len(GEMINI_AVAILABLE_MODELS) > 0
+        assert "gemini-3-pro-preview" in GEMINI_AVAILABLE_MODELS
+        assert "gemini-3-flash" in GEMINI_AVAILABLE_MODELS
+        assert "gemini-2.5-pro" in GEMINI_AVAILABLE_MODELS
+        assert "gemini-2.5-flash" in GEMINI_AVAILABLE_MODELS
+
+
+class TestGeminiOAuthProviderModelSelection:
+    """Tests for per-request model selection."""
+
+    @pytest.mark.asyncio
+    async def test_get_response_with_model_override(self, provider):
+        """Test that model can be overridden per request."""
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "response": {
+                        "candidates": [
+                            {"content": {"parts": [{"text": "Response"}]}}
+                        ]
+                    }
+                }
+            )
+        )
+
+        with patch("aiohttp.ClientSession") as mock_session_class:
+            mock_session = MagicMock()
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock()
+            mock_session.post = MagicMock(
+                return_value=AsyncMock(
+                    __aenter__=AsyncMock(return_value=mock_response)
+                )
+            )
+            mock_session_class.return_value = mock_session
+
+            # Override model to gemini-3-flash
+            await provider.get_response(messages, model="gemini-3-flash")
+
+            # Verify post was called with the overridden model
+            call_args = mock_session.post.call_args
+            assert call_args is not None
+            payload = call_args.kwargs.get("json", {})
+            assert payload.get("model") == "gemini-3-flash"
+
+    @pytest.mark.asyncio
+    async def test_get_response_invalid_model_uses_default(self, provider):
+        """Test that invalid model falls back to default."""
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "response": {
+                        "candidates": [
+                            {"content": {"parts": [{"text": "Response"}]}}
+                        ]
+                    }
+                }
+            )
+        )
+
+        with patch("aiohttp.ClientSession") as mock_session_class:
+            mock_session = MagicMock()
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock()
+            mock_session.post = MagicMock(
+                return_value=AsyncMock(
+                    __aenter__=AsyncMock(return_value=mock_response)
+                )
+            )
+            mock_session_class.return_value = mock_session
+
+            # Try to use invalid model
+            await provider.get_response(messages, model="invalid-model-xyz")
+
+            # Verify post was called with the default model
+            call_args = mock_session.post.call_args
+            assert call_args is not None
+            payload = call_args.kwargs.get("json", {})
+            # Should fall back to default
+            assert payload.get("model") == "gemini-3-pro-preview"
+
+    @pytest.mark.asyncio
+    async def test_get_response_without_model_uses_configured(self, provider):
+        """Test that configured model is used when no override specified."""
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.text = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "response": {
+                        "candidates": [
+                            {"content": {"parts": [{"text": "Response"}]}}
+                        ]
+                    }
+                }
+            )
+        )
+
+        with patch("aiohttp.ClientSession") as mock_session_class:
+            mock_session = MagicMock()
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock()
+            mock_session.post = MagicMock(
+                return_value=AsyncMock(
+                    __aenter__=AsyncMock(return_value=mock_response)
+                )
+            )
+            mock_session_class.return_value = mock_session
+
+            # No model override
+            await provider.get_response(messages)
+
+            # Verify post was called with the configured model
+            call_args = mock_session.post.call_args
+            assert call_args is not None
+            payload = call_args.kwargs.get("json", {})
+            # Should use the provider's configured model
+            assert payload.get("model") == "gemini-3-pro-preview"
