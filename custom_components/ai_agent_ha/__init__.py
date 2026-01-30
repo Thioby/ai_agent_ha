@@ -130,6 +130,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         rag_enabled = config_data.get(CONF_RAG_ENABLED, DEFAULT_RAG_ENABLED)
         if rag_enabled:
             await _initialize_rag(hass, config_data, entry)
+        else:
+            _LOGGER.info("RAG system disabled in configuration (rag_enabled=%s)", rag_enabled)
 
     except KeyError as err:
         _LOGGER.error("Missing required configuration key: %s", err)

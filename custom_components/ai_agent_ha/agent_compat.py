@@ -221,6 +221,8 @@ class AiAgentHaAgent:
             rag_context = await self._get_rag_context(user_query)
             if rag_context:
                 kwargs["rag_context"] = rag_context
+        else:
+            _LOGGER.debug("RAG manager not configured, skipping context retrieval")
 
         try:
             result = await self._agent.process_query(user_query, **kwargs)
