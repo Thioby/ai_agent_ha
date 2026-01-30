@@ -100,10 +100,11 @@ class QueryProcessor:
 
         if rag_context:
             rag_section = (
-                "\n\n--- RELEVANT CONTEXT FROM HOME ASSISTANT ---\n"
+                "\n\n--- SUGGESTED ENTITIES ---\n"
                 f"{rag_context}\n"
-                "--- END OF CONTEXT ---\n\n"
-                "Use the above context to provide more accurate and personalized responses."
+                "--- END SUGGESTIONS ---\n\n"
+                "These are suggestions based on your query. Use available tools "
+                "(get_entities_by_domain, get_state, etc.) to find other entities if needed."
             )
             final_system_prompt = final_system_prompt + rag_section if final_system_prompt else rag_section
             _LOGGER.info("RAG context added to system prompt (%d chars)", len(rag_context))

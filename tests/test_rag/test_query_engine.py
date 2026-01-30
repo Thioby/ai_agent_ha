@@ -116,7 +116,7 @@ class TestQueryEngine:
         """Test building compressed context."""
         context = query_engine.build_compressed_context(sample_results)
 
-        assert "Relevant entities" in context
+        assert "Potentially relevant entities" in context
         assert "light.bedroom_lamp" in context
         assert "switch.kitchen_outlet" in context
         assert "Bedroom" in context  # Area should be included
@@ -223,7 +223,7 @@ class TestQueryEngine:
 
         context = await query_engine.search_and_format("bedroom light")
 
-        assert "Relevant entities" in context
+        assert "Potentially relevant entities" in context
         assert "light.bedroom_lamp" in context
 
     @pytest.mark.asyncio
