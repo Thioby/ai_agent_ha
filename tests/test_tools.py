@@ -1797,6 +1797,23 @@ class TestHaNativeGetHistory:
         # Either success with empty data or error due to no recorder
         assert result is not None
 
+    @pytest.mark.asyncio
+    async def test_execute_uses_recorder_executor(self, tool, hass):
+        """Test that GetHistory uses recorder instance executor, not hass executor."""
+        from unittest.mock import patch, MagicMock, AsyncMock
+
+        mock_recorder = MagicMock()
+        mock_recorder.async_add_executor_job = AsyncMock(return_value={})
+
+        with patch(
+            'homeassistant.components.recorder.get_instance',
+            return_value=mock_recorder
+        ):
+            await tool.execute(entity_id="sensor.temp", hours=24)
+
+        # Verify recorder executor was used, not hass.async_add_executor_job
+        mock_recorder.async_add_executor_job.assert_called_once()
+
 
 class TestHaNativeGetStatistics:
     """Test GetStatistics tool."""
@@ -1824,6 +1841,23 @@ class TestHaNativeGetStatistics:
         # Should return error when recorder is not available
         assert result.success is False
         assert "recorder" in result.output.lower() or "recorder" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_uses_recorder_executor(self, tool, hass):
+        """Test that GetStatistics uses recorder instance executor, not hass executor."""
+        from unittest.mock import patch, MagicMock, AsyncMock
+
+        mock_recorder = MagicMock()
+        mock_recorder.async_add_executor_job = AsyncMock(return_value={"sensor.temp": [{"mean": 20}]})
+
+        with patch(
+            'homeassistant.components.recorder.get_instance',
+            return_value=mock_recorder
+        ):
+            await tool.execute(entity_id="sensor.temp")
+
+        # Verify recorder executor was used, not hass.async_add_executor_job
+        mock_recorder.async_add_executor_job.assert_called_once()
 
 
 class TestHaNativeGetAreaRegistry:
