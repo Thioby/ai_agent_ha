@@ -284,6 +284,12 @@ class GeminiOAuthProvider(AIProvider):
     ) -> tuple[list[dict[str, Any]], str | None]:
         """Convert OpenAI-style messages to Gemini format.
 
+        Handles:
+        - System messages -> systemInstruction
+        - User messages -> user role
+        - Assistant messages -> model role (including function calls)
+        - Function results -> user role with functionResponse
+
         Returns:
             Tuple of (contents list, system instruction text or None).
         """
@@ -302,7 +308,34 @@ class GeminiOAuthProvider(AIProvider):
             elif role == "user" and content:
                 contents.append({"role": "user", "parts": [{"text": content}]})
             elif role == "assistant" and content:
+                # Check if this is a function call response (JSON with functionCall)
+                try:
+                    parsed = json.loads(content)
+                    if "functionCall" in parsed:
+                        contents.append({
+                            "role": "model",
+                            "parts": [parsed]
+                        })
+                        continue
+                except (ValueError, TypeError):
+                    pass
                 contents.append({"role": "model", "parts": [{"text": content}]})
+            elif role == "function":
+                # Tool result - Gemini uses functionResponse in user role
+                func_name = message.get("name", "unknown")
+                try:
+                    result_data = json.loads(content)
+                except (ValueError, TypeError):
+                    result_data = {"result": content}
+                contents.append({
+                    "role": "user",
+                    "parts": [{
+                        "functionResponse": {
+                            "name": func_name,
+                            "response": result_data
+                        }
+                    }]
+                })
 
         return contents, system_instruction
 
@@ -407,18 +440,27 @@ class GeminiOAuthProvider(AIProvider):
             if "response" in data:
                 data = data["response"]
 
-            # Extract text from Gemini response format
+            # Extract response from Gemini format
             candidates = data.get("candidates", [])
             if candidates:
                 content = candidates[0].get("content", {})
                 parts = content.get("parts", [])
                 if parts:
-                    return parts[0].get("text", str(data))
+                    first_part = parts[0]
+                    # Check for function call first
+                    if "functionCall" in first_part:
+                        # Return JSON with functionCall for agentic loop to detect
+                        return json.dumps(first_part)
+                    # Otherwise return text
+                    if "text" in first_part:
+                        return first_part["text"]
+                    # Fallback to JSON representation
+                    return json.dumps(data)
 
             _LOGGER.warning(
                 "Unexpected Gemini response format: %s", response_text[:200]
             )
-            return str(data)
+            return json.dumps(data)
 
     async def get_response(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
         """Get a response from Gemini using OAuth token.

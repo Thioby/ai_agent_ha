@@ -207,7 +207,7 @@ class AiAgentHaAgent:
                 )
 
         # Build kwargs
-        kwargs = {}
+        kwargs = {"hass": self.hass}  # Pass hass for tool execution
         if debug:
             kwargs["debug"] = debug
 

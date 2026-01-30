@@ -73,17 +73,19 @@ class AnthropicProvider(BaseHTTPClient):
     def _extract_system(
         self, messages: list[dict[str, Any]]
     ) -> tuple[list[dict[str, Any]], str | None]:
-        """Extract system message from messages list.
+        """Extract system message and convert messages for Anthropic format.
 
-        Anthropic requires the system message to be passed separately from
-        the messages array, unlike OpenAI's format.
+        Anthropic requires:
+        - System message passed separately
+        - Tool results as 'user' role with tool_result content blocks
+        - Assistant messages with tool_use preserved
 
         Args:
             messages: List of message dictionaries with role and content.
 
         Returns:
             A tuple of (filtered_messages, system_content) where:
-            - filtered_messages: Messages without system messages
+            - filtered_messages: Messages in Anthropic format
             - system_content: The system message content, or None if not present
         """
         system_content: str | None = None
@@ -95,7 +97,37 @@ class AnthropicProvider(BaseHTTPClient):
 
             if role == "system":
                 system_content = content
-            elif content:  # Only include messages with content
+            elif role == "function":
+                # Tool result - Anthropic uses tool_result in user role
+                tool_use_id = message.get("tool_use_id", message.get("name", ""))
+                filtered_messages.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": content
+                    }]
+                })
+            elif role == "assistant" and content:
+                # Check if this contains tool_use JSON
+                try:
+                    parsed = json.loads(content)
+                    if "tool_use" in parsed:
+                        tool_use = parsed["tool_use"]
+                        filtered_messages.append({
+                            "role": "assistant",
+                            "content": [{
+                                "type": "tool_use",
+                                "id": tool_use.get("id", ""),
+                                "name": tool_use.get("name", ""),
+                                "input": tool_use.get("input", {})
+                            }]
+                        })
+                        continue
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    pass
+                filtered_messages.append({"role": role, "content": content})
+            elif content:
                 filtered_messages.append({"role": role, "content": content})
 
         return filtered_messages, system_content

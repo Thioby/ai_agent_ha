@@ -221,10 +221,38 @@ class AnthropicOAuthProvider(AIProvider):
 
             if role == "system":
                 system_message = content
+            elif role == "function":
+                # Tool result - Anthropic uses tool_result in user role
+                tool_use_id = message.get("tool_use_id", message.get("name", ""))
+                anthropic_messages.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": content
+                    }]
+                })
+            elif role == "assistant" and content:
+                # Check if this contains tool_use JSON
+                try:
+                    parsed = json.loads(content)
+                    if "tool_use" in parsed:
+                        tool_use = parsed["tool_use"]
+                        anthropic_messages.append({
+                            "role": "assistant",
+                            "content": [{
+                                "type": "tool_use",
+                                "id": tool_use.get("id", ""),
+                                "name": tool_use.get("name", ""),
+                                "input": tool_use.get("input", {})
+                            }]
+                        })
+                        continue
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    pass
+                anthropic_messages.append({"role": "assistant", "content": content})
             elif role == "user" and content:
                 anthropic_messages.append({"role": "user", "content": content})
-            elif role == "assistant" and content:
-                anthropic_messages.append({"role": "assistant", "content": content})
 
         # Build system as array with Claude Code identifier first (required for OAuth)
         # MUST be sent as array of text blocks, not a single string

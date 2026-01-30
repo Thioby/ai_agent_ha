@@ -72,6 +72,7 @@ class GeminiProvider(BaseHTTPClient):
         - 'user' role (same as OpenAI)
         - 'model' role (instead of 'assistant')
         - System messages are extracted for systemInstruction
+        - Function results use 'user' role with functionResponse parts
 
         Args:
             messages: List of message dicts with 'role' and 'content'.
@@ -79,6 +80,8 @@ class GeminiProvider(BaseHTTPClient):
         Returns:
             Tuple of (contents list, system instruction text or None).
         """
+        import json as _json
+
         contents = []
         system_instruction = None
 
@@ -95,7 +98,34 @@ class GeminiProvider(BaseHTTPClient):
             elif role == "user":
                 contents.append({"role": "user", "parts": [{"text": content}]})
             elif role == "assistant":
+                # Check if this is a function call response (JSON with functionCall)
+                try:
+                    parsed = _json.loads(content)
+                    if "functionCall" in parsed:
+                        contents.append({
+                            "role": "model",
+                            "parts": [parsed]
+                        })
+                        continue
+                except (ValueError, TypeError):
+                    pass
                 contents.append({"role": "model", "parts": [{"text": content}]})
+            elif role == "function":
+                # Tool result - Gemini uses functionResponse in user role
+                func_name = message.get("name", "unknown")
+                try:
+                    result_data = _json.loads(content)
+                except (ValueError, TypeError):
+                    result_data = {"result": content}
+                contents.append({
+                    "role": "user",
+                    "parts": [{
+                        "functionResponse": {
+                            "name": func_name,
+                            "response": result_data
+                        }
+                    }]
+                })
 
         return contents, system_instruction
 
@@ -166,15 +196,19 @@ class GeminiProvider(BaseHTTPClient):
     def _extract_response(self, response_data: dict[str, Any]) -> str:
         """Extract the response text from Gemini API response.
 
+        Handles both text responses and function calls for agentic loop.
+
         Args:
             response_data: The parsed JSON response from Gemini API.
 
         Returns:
-            The extracted response text.
+            The extracted response text, or JSON string for function calls.
 
         Raises:
             ValueError: If no response is available in candidates.
         """
+        import json
+
         candidates = response_data.get("candidates", [])
 
         if not candidates:
@@ -185,6 +219,15 @@ class GeminiProvider(BaseHTTPClient):
         parts = content.get("parts", [])
 
         if parts:
-            return parts[0].get("text", "")
+            first_part = parts[0]
+            # Check for function call first
+            if "functionCall" in first_part:
+                # Return JSON for agentic loop to detect
+                return json.dumps(first_part)
+            # Otherwise return text
+            if "text" in first_part:
+                return first_part["text"]
+            # No text and no functionCall - empty response
+            return ""
 
         return ""

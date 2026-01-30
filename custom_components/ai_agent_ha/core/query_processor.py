@@ -1,8 +1,13 @@
 """Query processor for AI agent interactions."""
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING, Any
+
+from ..function_calling import FunctionCallHandler, FunctionCall
+from ..tools.base import ToolRegistry
+from .response_parser import ResponseParser
 
 if TYPE_CHECKING:
     from ..providers.registry import AIProvider
@@ -42,6 +47,7 @@ class QueryProcessor:
         self.provider = provider
         self.max_iterations = max_iterations
         self.max_query_length = max_query_length
+        self.response_parser = ResponseParser()
 
     def _sanitize_query(self, query: str, max_length: int | None = None) -> str:
         """Sanitize a user query by removing invisible characters.
@@ -99,6 +105,76 @@ class QueryProcessor:
 
         return messages
 
+    def _detect_function_call(self, response_text: str) -> list[FunctionCall] | None:
+        """Detect and parse function calls from response text.
+
+        Args:
+            response_text: The text response from the AI provider.
+
+        Returns:
+            List of FunctionCall objects if found, None otherwise.
+        """
+        # Parse the text to JSON/Dict
+        parsed_result = self.response_parser.parse(response_text)
+
+        if parsed_result["type"] == "text":
+            return None
+
+        content = parsed_result["content"]
+        if not isinstance(content, dict):
+            return None
+
+        # Try FunctionCallHandler for standard provider formats
+        # We try strict formats first
+        
+        # OpenAI format
+        fc_openai = FunctionCallHandler.parse_openai_response({"choices": [{"message": {"tool_calls": content.get("tool_calls")}}]}) if "tool_calls" in content else None
+        if fc_openai:
+            return fc_openai
+
+        # Gemini format (simulated based on typical JSON output)
+        if "functionCall" in content:
+            return [FunctionCall(
+                id=f"gemini_{content['functionCall'].get('name', '')}",
+                name=content['functionCall'].get('name', ''),
+                arguments=content['functionCall'].get('args', {})
+            )]
+
+        # Anthropic format: {"tool_use": {"id": ..., "name": ..., "input": ...}}
+        if "tool_use" in content:
+            tool_use = content["tool_use"]
+            return [FunctionCall(
+                id=tool_use.get("id", ""),
+                name=tool_use.get("name", ""),
+                arguments=tool_use.get("input", {})
+            )]
+
+        # Fallback: Check for simplified/direct JSON format often used in custom implementations
+        # e.g. {"function": "name", "parameters": {}} or {"name": "name", "arguments": {}}
+        name = content.get("function") or content.get("name") or content.get("tool")
+        args = content.get("parameters") or content.get("arguments") or content.get("args")
+
+        if name and isinstance(name, str) and isinstance(args, dict):
+             return [FunctionCall(id=name, name=name, arguments=args)]
+             
+        # Check for list of tool calls in 'tool_calls' key directly
+        tool_calls_list = content.get("tool_calls")
+        if isinstance(tool_calls_list, list):
+            result = []
+            for tc in tool_calls_list:
+                # Handle OpenAI-style inside the list
+                func = tc.get("function", {})
+                if func:
+                    result.append(FunctionCall(
+                        id=tc.get("id", ""),
+                        name=func.get("name", ""),
+                        arguments=func.get("arguments", {}) if isinstance(func.get("arguments"), dict) else json.loads(func.get("arguments", "{}"))
+                    ))
+            if result:
+                return result
+
+        return None
+
     async def process(
         self,
         query: str,
@@ -138,26 +214,72 @@ class QueryProcessor:
             sanitized_query, messages, system_prompt=system_prompt
         )
 
+        hass = kwargs.get("hass")
+        current_iteration = 0
+
         try:
-            # Call the provider
-            provider_kwargs: dict[str, Any] = {**kwargs}
-            if tools is not None:
-                provider_kwargs["tools"] = tools
+            while current_iteration < self.max_iterations:
+                # Call the provider
+                provider_kwargs: dict[str, Any] = {**kwargs}
+                if tools is not None:
+                    provider_kwargs["tools"] = tools
 
-            response = await self.provider.get_response(built_messages, **provider_kwargs)
+                response_text = await self.provider.get_response(built_messages, **provider_kwargs)
 
-            # Build the updated message list with the response
-            updated_messages = list(built_messages)
-            # Remove system prompt from returned messages if present
-            if system_prompt and updated_messages and updated_messages[0].get("role") == "system":
-                updated_messages = updated_messages[1:]
+                # Detect function call
+                function_calls = self._detect_function_call(response_text)
 
-            updated_messages.append({"role": "assistant", "content": response})
+                if not function_calls:
+                    # No function call, return the response
+                    # Build the updated message list with the response
+                    updated_messages = list(built_messages)
+                    # Remove system prompt from returned messages if present
+                    if system_prompt and updated_messages and updated_messages[0].get("role") == "system":
+                        updated_messages = updated_messages[1:]
 
+                    updated_messages.append({"role": "assistant", "content": response_text})
+                    
+                    return {
+                        "success": True,
+                        "response": response_text,
+                        "messages": updated_messages,
+                    }
+
+                # Handle function calls
+                _LOGGER.info("Detected function calls: %s", function_calls)
+                
+                # Append assistant's message (the tool call)
+                built_messages.append({"role": "assistant", "content": response_text})
+                
+                for fc in function_calls:
+                    try:
+                        result = await ToolRegistry.execute_tool(
+                            tool_id=fc.name,
+                            params=fc.arguments,
+                            hass=hass
+                        )
+                        result_str = json.dumps(result.to_dict())
+                        built_messages.append({
+                            "role": "function",
+                            "name": fc.name,
+                            "tool_use_id": fc.id,  # For Anthropic compatibility
+                            "content": result_str
+                        })
+                    except Exception as e:
+                        error_msg = json.dumps({"error": str(e), "tool": fc.name})
+                        built_messages.append({
+                            "role": "function",
+                            "name": fc.name,
+                            "tool_use_id": fc.id,  # For Anthropic compatibility
+                            "content": error_msg
+                        })
+
+                current_iteration += 1
+
+            # Max iterations reached
             return {
-                "success": True,
-                "response": response,
-                "messages": updated_messages,
+                "success": False,
+                "error": "Maximum iterations reached without final response",
             }
 
         except Exception as e:

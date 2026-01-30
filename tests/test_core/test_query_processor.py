@@ -277,3 +277,202 @@ class TestProcess:
         assert result["success"] is False
         assert "error" in result
         assert "API Error" in result["error"]
+
+
+class TestDetectFunctionCall:
+    """Tests for _detect_function_call method."""
+
+    def test_detect_gemini_function_call(self) -> None:
+        """Test detection of Gemini-style function call."""
+        provider = MockProvider()
+        processor = QueryProcessor(provider)
+
+        response = '{"functionCall": {"name": "get_weather", "args": {"location": "NYC"}}}'
+        result = processor._detect_function_call(response)
+
+        assert result is not None
+        assert len(result) == 1
+        assert result[0].name == "get_weather"
+        assert result[0].arguments == {"location": "NYC"}
+
+    def test_detect_anthropic_function_call(self) -> None:
+        """Test detection of Anthropic-style tool_use."""
+        provider = MockProvider()
+        processor = QueryProcessor(provider)
+
+        response = '{"tool_use": {"id": "tool_123", "name": "search", "input": {"query": "weather"}}}'
+        result = processor._detect_function_call(response)
+
+        assert result is not None
+        assert len(result) == 1
+        assert result[0].name == "search"
+        assert result[0].id == "tool_123"
+        assert result[0].arguments == {"query": "weather"}
+
+    def test_detect_simple_function_format(self) -> None:
+        """Test detection of simple function format."""
+        provider = MockProvider()
+        processor = QueryProcessor(provider)
+
+        response = '{"function": "get_entities", "parameters": {"domain": "light"}}'
+        result = processor._detect_function_call(response)
+
+        assert result is not None
+        assert len(result) == 1
+        assert result[0].name == "get_entities"
+        assert result[0].arguments == {"domain": "light"}
+
+    def test_detect_no_function_call_plain_text(self) -> None:
+        """Test that plain text doesn't trigger function call detection."""
+        provider = MockProvider()
+        processor = QueryProcessor(provider)
+
+        response = "Hello, how can I help you today?"
+        result = processor._detect_function_call(response)
+
+        assert result is None
+
+    def test_detect_no_function_call_regular_json(self) -> None:
+        """Test that regular JSON without function markers is not detected."""
+        provider = MockProvider()
+        processor = QueryProcessor(provider)
+
+        response = '{"temperature": 72, "humidity": 45}'
+        result = processor._detect_function_call(response)
+
+        assert result is None
+
+
+class TestAgenticLoop:
+    """Tests for the agentic loop behavior in process method."""
+
+    @pytest.mark.asyncio
+    async def test_single_tool_call_and_response(self) -> None:
+        """Test that a single tool call is executed and result fed back."""
+        from unittest.mock import patch
+        from custom_components.ai_agent_ha.tools.base import ToolResult
+
+        # First call returns function call, second returns final response
+        provider = MockProvider()
+        provider.get_response = AsyncMock(side_effect=[
+            '{"functionCall": {"name": "get_weather", "args": {"location": "NYC"}}}',
+            "The weather in NYC is sunny and 72°F."
+        ])
+        processor = QueryProcessor(provider)
+
+        # Mock tool execution
+        mock_result = ToolResult(
+            output="Temperature: 72°F, Condition: Sunny",
+            success=True
+        )
+
+        with patch.object(
+            processor, '_detect_function_call',
+            side_effect=[
+                [MagicMock(id="fc1", name="get_weather", arguments={"location": "NYC"})],
+                None  # No function call in final response
+            ]
+        ):
+            with patch(
+                'custom_components.ai_agent_ha.core.query_processor.ToolRegistry.execute_tool',
+                new_callable=AsyncMock,
+                return_value=mock_result
+            ):
+                result = await processor.process(query="What's the weather in NYC?", messages=[])
+
+        assert result["success"] is True
+        assert result["response"] == "The weather in NYC is sunny and 72°F."
+        assert provider.get_response.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_max_iterations_limit(self) -> None:
+        """Test that max_iterations prevents infinite loops."""
+        from unittest.mock import patch
+        from custom_components.ai_agent_ha.tools.base import ToolResult
+
+        # Provider always returns function call
+        provider = MockProvider()
+        provider.get_response = AsyncMock(
+            return_value='{"functionCall": {"name": "endless", "args": {}}}'
+        )
+        processor = QueryProcessor(provider, max_iterations=3)
+
+        mock_result = ToolResult(output="Done", success=True)
+
+        with patch(
+            'custom_components.ai_agent_ha.core.query_processor.ToolRegistry.execute_tool',
+            new_callable=AsyncMock,
+            return_value=mock_result
+        ):
+            result = await processor.process(query="Loop forever", messages=[])
+
+        assert result["success"] is False
+        assert "Maximum iterations" in result["error"]
+        # Should have called exactly max_iterations times
+        assert provider.get_response.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_tool_execution_error_handling(self) -> None:
+        """Test that tool execution errors are handled gracefully."""
+        from unittest.mock import patch
+        from custom_components.ai_agent_ha.tools.base import ToolExecutionError
+
+        # First call returns function call, second returns final response
+        provider = MockProvider()
+        provider.get_response = AsyncMock(side_effect=[
+            '{"functionCall": {"name": "broken_tool", "args": {}}}',
+            "I encountered an error but I'll help differently."
+        ])
+        processor = QueryProcessor(provider)
+
+        with patch(
+            'custom_components.ai_agent_ha.core.query_processor.ToolRegistry.execute_tool',
+            new_callable=AsyncMock,
+            side_effect=ToolExecutionError("Tool failed", tool_id="broken_tool")
+        ):
+            result = await processor.process(query="Use broken tool", messages=[])
+
+        # Should still succeed with final response
+        assert result["success"] is True
+        assert "error" not in result or result.get("error") is None
+        assert provider.get_response.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_no_tool_call_returns_immediately(self) -> None:
+        """Test that simple text responses return without iteration."""
+        provider = MockProvider(response="Just a simple answer.")
+        processor = QueryProcessor(provider)
+
+        result = await processor.process(query="Hello", messages=[])
+
+        assert result["success"] is True
+        assert result["response"] == "Just a simple answer."
+        # Only one call to provider
+        provider.get_response.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_multiple_tool_calls_in_sequence(self) -> None:
+        """Test multiple sequential tool calls."""
+        from unittest.mock import patch
+        from custom_components.ai_agent_ha.tools.base import ToolResult
+
+        provider = MockProvider()
+        provider.get_response = AsyncMock(side_effect=[
+            '{"functionCall": {"name": "tool_a", "args": {}}}',
+            '{"functionCall": {"name": "tool_b", "args": {}}}',
+            "Final result after two tools."
+        ])
+        processor = QueryProcessor(provider)
+
+        mock_result = ToolResult(output="Tool output", success=True)
+
+        with patch(
+            'custom_components.ai_agent_ha.core.query_processor.ToolRegistry.execute_tool',
+            new_callable=AsyncMock,
+            return_value=mock_result
+        ):
+            result = await processor.process(query="Use multiple tools", messages=[])
+
+        assert result["success"] is True
+        assert result["response"] == "Final result after two tools."
+        assert provider.get_response.call_count == 3
