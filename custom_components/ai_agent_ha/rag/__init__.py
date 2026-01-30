@@ -176,11 +176,26 @@ class RAGManager:
         self._ensure_initialized()
 
         try:
-            # First, search for entities
-            results = await self._query_engine.search_entities(
-                query=query,
-                top_k=top_k,
-            )
+            # Extract intent from query to apply smart filtering
+            intent = self._query_engine.extract_query_intent(query)
+
+            # Use filtered search if intent detected, otherwise plain search
+            if intent.get("domain") or intent.get("device_class") or intent.get("area"):
+                _LOGGER.debug(
+                    "RAG using intent-based search: %s", intent
+                )
+                results = await self._query_engine.search_by_criteria(
+                    query=query,
+                    domain=intent.get("domain"),
+                    device_class=intent.get("device_class"),
+                    area=intent.get("area"),
+                    top_k=top_k,
+                )
+            else:
+                results = await self._query_engine.search_entities(
+                    query=query,
+                    top_k=top_k,
+                )
 
             # Validate entities exist and remove stale ones
             valid_results = []

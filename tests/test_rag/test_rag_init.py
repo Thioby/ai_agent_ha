@@ -34,6 +34,8 @@ def mock_dependencies():
 
         mock_query = mock_query_cls.return_value
         mock_query.search_entities = AsyncMock(return_value=[])
+        mock_query.search_by_criteria = AsyncMock(return_value=[])
+        mock_query.extract_query_intent = MagicMock(return_value={})  # No intent by default
         mock_query.build_compressed_context = MagicMock(return_value="context")
 
         mock_learner = mock_learner_cls.return_value
@@ -187,8 +189,40 @@ async def test_get_relevant_context_exception(hass, mock_dependencies):
     mock_dependencies["query"].search_entities.side_effect = Exception("Search failed")
     
     context = await rag.get_relevant_context("query")
-    
+
     assert context == ""
+
+
+@pytest.mark.asyncio
+async def test_get_relevant_context_with_intent(hass, mock_dependencies):
+    """Test that intent-based filtering uses search_by_criteria."""
+    rag = RAGManager(hass, {})
+    await rag.async_initialize()
+
+    # Setup intent detection to return temperature filter
+    mock_dependencies["query"].extract_query_intent.return_value = {
+        "device_class": "temperature"
+    }
+
+    mock_result = MagicMock()
+    mock_result.id = "sensor.temperature"
+    mock_dependencies["query"].search_by_criteria.return_value = [mock_result]
+
+    # Set HA state
+    hass.states.async_set("sensor.temperature", "22.5")
+
+    context = await rag.get_relevant_context("what is the temperature")
+
+    # Should use search_by_criteria when intent detected
+    mock_dependencies["query"].search_by_criteria.assert_called_with(
+        query="what is the temperature",
+        domain=None,
+        device_class="temperature",
+        area=None,
+        top_k=10,
+    )
+    # Should NOT call search_entities
+    mock_dependencies["query"].search_entities.assert_not_called()
 
 
 @pytest.mark.asyncio
