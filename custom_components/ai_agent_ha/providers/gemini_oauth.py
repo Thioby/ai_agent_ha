@@ -418,6 +418,22 @@ class GeminiOAuthProvider(AIProvider):
         wrapped_payload: dict,
     ) -> str:
         """Execute the HTTP request to Gemini API."""
+        # Log request details (without sensitive data)
+        request_contents = wrapped_payload.get("request", {}).get("contents", [])
+        _LOGGER.debug(
+            "Gemini OAuth request: model=%s, contents_count=%d, has_tools=%s",
+            wrapped_payload.get("model"),
+            len(request_contents),
+            "tools" in wrapped_payload.get("request", {}),
+        )
+        # Log first user message for context (truncated)
+        if request_contents:
+            last_content = request_contents[-1]
+            parts = last_content.get("parts", [])
+            if parts and "text" in parts[0]:
+                text_preview = parts[0]["text"][:100]
+                _LOGGER.debug("Gemini OAuth request last message: %s...", text_preview)
+
         async with session.post(
             url,
             headers=headers,
@@ -426,39 +442,99 @@ class GeminiOAuthProvider(AIProvider):
         ) as resp:
             response_text = await resp.text()
 
+            _LOGGER.debug(
+                "Gemini OAuth response: status=%d, length=%d",
+                resp.status,
+                len(response_text),
+            )
+
             if resp.status != 200:
                 _LOGGER.error(
-                    "Gemini OAuth API error %d: %s", resp.status, response_text
+                    "Gemini OAuth API error %d: %s", resp.status, response_text[:500]
                 )
                 raise Exception(
-                    f"Gemini OAuth API error {resp.status}: {response_text[:200]}"
+                    f"Gemini OAuth API error {resp.status}: {response_text[:500]}"
                 )
 
-            data = json.loads(response_text)
+            try:
+                data = json.loads(response_text)
+            except json.JSONDecodeError as e:
+                _LOGGER.error(
+                    "Gemini OAuth JSON decode error: %s, response: %s",
+                    e,
+                    response_text[:500],
+                )
+                raise Exception(f"Invalid JSON response from Gemini: {e}")
+
+            # Log raw response structure for debugging
+            _LOGGER.debug(
+                "Gemini OAuth response keys: %s",
+                list(data.keys()) if isinstance(data, dict) else type(data),
+            )
 
             # Unwrap response if it contains 'response' key (Cloud Code API)
             if "response" in data:
                 data = data["response"]
+                _LOGGER.debug("Gemini OAuth unwrapped response keys: %s", list(data.keys()))
+
+            # Check for error in response
+            if "error" in data:
+                error_info = data["error"]
+                _LOGGER.error(
+                    "Gemini OAuth API returned error: %s",
+                    json.dumps(error_info)[:500],
+                )
+                raise Exception(f"Gemini API error: {error_info}")
 
             # Extract response from Gemini format
             candidates = data.get("candidates", [])
+            _LOGGER.debug("Gemini OAuth candidates count: %d", len(candidates))
+
             if candidates:
+                # Log finish reason if present
+                finish_reason = candidates[0].get("finishReason")
+                if finish_reason:
+                    _LOGGER.debug("Gemini OAuth finish reason: %s", finish_reason)
+
                 content = candidates[0].get("content", {})
                 parts = content.get("parts", [])
+                _LOGGER.debug("Gemini OAuth parts count: %d", len(parts))
+
                 if parts:
                     first_part = parts[0]
                     # Check for function call first
                     if "functionCall" in first_part:
+                        func_name = first_part["functionCall"].get("name", "unknown")
+                        _LOGGER.debug("Gemini OAuth function call detected: %s", func_name)
                         # Return JSON with functionCall for agentic loop to detect
                         return json.dumps(first_part)
                     # Otherwise return text
                     if "text" in first_part:
-                        return first_part["text"]
+                        text_response = first_part["text"]
+                        _LOGGER.debug(
+                            "Gemini OAuth text response length: %d, preview: %s...",
+                            len(text_response),
+                            text_response[:100],
+                        )
+                        return text_response
+                    # Log unexpected part format
+                    _LOGGER.warning(
+                        "Gemini OAuth unexpected part format: %s",
+                        list(first_part.keys()),
+                    )
                     # Fallback to JSON representation
                     return json.dumps(data)
+            else:
+                # No candidates - check for promptFeedback
+                prompt_feedback = data.get("promptFeedback")
+                if prompt_feedback:
+                    _LOGGER.warning(
+                        "Gemini OAuth prompt feedback (possibly blocked): %s",
+                        json.dumps(prompt_feedback),
+                    )
 
             _LOGGER.warning(
-                "Unexpected Gemini response format: %s", response_text[:200]
+                "Unexpected Gemini response format: %s", response_text[:500]
             )
             return json.dumps(data)
 
