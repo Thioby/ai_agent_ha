@@ -251,17 +251,17 @@ class QueryEngine:
         query_lower = query.lower()
         intent: dict[str, Any] = {}
 
-        # Domain extraction
+        # Domain extraction (English + Polish)
         domain_keywords = {
-            "light": ["light", "lamp", "bulb"],
-            "switch": ["switch", "outlet", "plug"],
-            "sensor": ["sensor", "temperature", "humidity", "motion"],
-            "cover": ["cover", "blind", "curtain", "shade"],
-            "climate": ["climate", "thermostat", "hvac", "ac", "heating"],
-            "lock": ["lock", "door lock"],
-            "fan": ["fan"],
-            "media_player": ["media", "speaker", "tv", "television"],
-            "camera": ["camera"],
+            "light": ["light", "lamp", "bulb", "światło", "światła", "lampa", "lampy", "żarówka"],
+            "switch": ["switch", "outlet", "plug", "przełącznik", "gniazdko", "wtyczka"],
+            "sensor": ["sensor", "temperature", "humidity", "motion", "czujnik", "temperatura", "wilgotność", "ruch"],
+            "cover": ["cover", "blind", "curtain", "shade", "roleta", "zasłona", "żaluzja", "brama"],
+            "climate": ["climate", "thermostat", "hvac", "ac", "heating", "klimatyzacja", "termostat", "ogrzewanie"],
+            "lock": ["lock", "door lock", "zamek"],
+            "fan": ["fan", "wentylator"],
+            "media_player": ["media", "speaker", "tv", "television", "głośnik", "telewizor"],
+            "camera": ["camera", "kamera"],
         }
 
         for domain, keywords in domain_keywords.items():
@@ -269,15 +269,15 @@ class QueryEngine:
                 intent["domain"] = domain
                 break
 
-        # Device class extraction (subset)
+        # Device class extraction (English + Polish)
         device_class_keywords = {
-            "temperature": ["temperature", "temp"],
-            "humidity": ["humidity"],
-            "motion": ["motion", "movement"],
-            "door": ["door"],
-            "window": ["window"],
-            "battery": ["battery"],
-            "power": ["power", "energy", "watt"],
+            "temperature": ["temperature", "temp", "temperatura", "temperatur", "stopni", "ciepło", "zimno"],
+            "humidity": ["humidity", "wilgotność", "wilgoć"],
+            "motion": ["motion", "movement", "ruch", "ruchu"],
+            "door": ["door", "drzwi"],
+            "window": ["window", "okno", "okna"],
+            "battery": ["battery", "bateria", "akumulator"],
+            "power": ["power", "energy", "watt", "moc", "energia", "prąd", "zużycie"],
         }
 
         for device_class, keywords in device_class_keywords.items():
@@ -285,22 +285,23 @@ class QueryEngine:
                 intent["device_class"] = device_class
                 break
 
-        # Common room/area names
+        # Common room/area names (English + Polish)
         area_keywords = [
-            "bedroom",
-            "living room",
-            "kitchen",
-            "bathroom",
-            "office",
-            "garage",
-            "basement",
-            "attic",
-            "hallway",
-            "dining room",
-            "garden",
-            "patio",
-            "backyard",
+            "bedroom", "sypialnia",
+            "living room", "salon", "pokój dzienny",
+            "kitchen", "kuchnia",
+            "bathroom", "łazienka",
+            "office", "biuro", "gabinet",
+            "garage", "garaż",
+            "basement", "piwnica",
+            "attic", "strych", "poddasze",
+            "hallway", "korytarz", "przedpokój", "wiatrołap",
+            "dining room", "jadalnia",
+            "garden", "ogród",
+            "patio", "taras",
+            "backyard", "podwórko",
             "front yard",
+            "pokój", "room",
         ]
 
         for area in area_keywords:
