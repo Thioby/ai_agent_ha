@@ -1661,8 +1661,11 @@ class TestHaNativeCallService:
 
     @pytest.mark.asyncio
     async def test_execute_returns_success(self, tool, hass):
-        """Test execute always returns success (schema-only tool)."""
-        # CallService is a placeholder tool, actual logic is in agent.py
+        """Test execute calls hass.services.async_call and returns success."""
+        from pytest_homeassistant_custom_component.common import async_mock_service
+
+        calls = async_mock_service(hass, "light", "turn_on")
+
         result = await tool.execute(
             domain="light",
             service="turn_on",
@@ -1670,11 +1673,17 @@ class TestHaNativeCallService:
         )
 
         assert result.success is True
-        assert "agent logic" in result.output.lower()
+        assert "light.turn_on" in result.output
+        assert len(calls) == 1
+        assert calls[0].data == {"entity_id": "light.test"}
 
     @pytest.mark.asyncio
     async def test_execute_with_service_data(self, tool, hass):
-        """Test service call with service_data."""
+        """Test service call with service_data merges into call_data."""
+        from pytest_homeassistant_custom_component.common import async_mock_service
+
+        calls = async_mock_service(hass, "light", "turn_on")
+
         result = await tool.execute(
             domain="light",
             service="turn_on",
@@ -1683,6 +1692,35 @@ class TestHaNativeCallService:
         )
 
         assert result.success is True
+        assert len(calls) == 1
+        assert calls[0].data == {"entity_id": "light.test", "brightness": 128}
+
+    @pytest.mark.asyncio
+    async def test_execute_service_not_found(self, tool, hass):
+        """Test execute handles missing service gracefully."""
+        # Don't mock any service - it won't exist
+        result = await tool.execute(
+            domain="nonexistent",
+            service="fake_service",
+            target={"entity_id": "light.test"}
+        )
+
+        assert result.success is False
+        assert "error" in result.output.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_without_hass(self, tool):
+        """Test execute fails gracefully without hass."""
+        tool.hass = None
+
+        result = await tool.execute(
+            domain="light",
+            service="turn_on",
+            target={"entity_id": "light.test"}
+        )
+
+        assert result.success is False
+        assert "not available" in result.output.lower()
 
 
 class TestHaNativeGetEntitiesByDeviceClass:

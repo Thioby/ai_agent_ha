@@ -200,8 +200,42 @@ class CallService(Tool):
 
     async def execute(self, domain: str, service: str, target: Optional[Dict] = None,
                       service_data: Optional[Dict] = None, **kwargs) -> ToolResult:
-        # Schema-only definition for Gemini
-        return ToolResult(output="Service called via agent logic", success=True)
+        """Execute a Home Assistant service call."""
+        if not self.hass:
+            return ToolResult(output="Home Assistant instance not available", success=False)
+
+        try:
+            # Prepare service call data
+            call_data: Dict[str, Any] = {}
+
+            # Add target entity_id if provided
+            if target:
+                call_data.update(target)
+
+            # Add additional service data if provided
+            if service_data:
+                call_data.update(service_data)
+
+            _LOGGER.debug("Calling service %s.%s with data: %s", domain, service, call_data)
+
+            await self.hass.services.async_call(
+                domain,
+                service,
+                call_data,
+                blocking=True,  # Wait for service to complete
+            )
+
+            entity_id = target.get("entity_id", "unknown") if target else "unknown"
+            return ToolResult(
+                output=f"Successfully called {domain}.{service} on {entity_id}",
+                success=True,
+                metadata={"domain": domain, "service": service, "target": target}
+            )
+
+        except Exception as e:
+            error_msg = f"Error calling service {domain}.{service}: {e}"
+            _LOGGER.error(error_msg)
+            return ToolResult(output=error_msg, success=False, error=str(e))
 
 
 @ToolRegistry.register
