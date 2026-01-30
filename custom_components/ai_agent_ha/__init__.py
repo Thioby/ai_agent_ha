@@ -126,12 +126,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         _LOGGER.info("Successfully set up AI Agent HA for provider: %s", provider)
 
-        # Initialize RAG system if enabled
+        # Connect existing RAG manager to new agent (if RAG was initialized by another entry)
+        existing_rag_manager = hass.data[DOMAIN].get("rag_manager")
+        if existing_rag_manager:
+            hass.data[DOMAIN]["agents"][provider].set_rag_manager(existing_rag_manager)
+            _LOGGER.info("Connected existing RAG manager to new agent: %s", provider)
+
+        # Initialize RAG system if enabled for this entry (and not already initialized)
         rag_enabled = config_data.get(CONF_RAG_ENABLED, DEFAULT_RAG_ENABLED)
-        if rag_enabled:
+        if rag_enabled and not existing_rag_manager:
             await _initialize_rag(hass, config_data, entry)
-        else:
-            _LOGGER.info("RAG system disabled in configuration (rag_enabled=%s)", rag_enabled)
+        elif not rag_enabled and not existing_rag_manager:
+            _LOGGER.debug("RAG system not enabled for provider: %s", provider)
 
     except KeyError as err:
         _LOGGER.error("Missing required configuration key: %s", err)
