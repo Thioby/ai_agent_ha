@@ -279,6 +279,84 @@ class TestProcess:
         assert "API Error" in result["error"]
 
 
+class TestBuildMessagesWithRagContext:
+    """Tests for _build_messages with RAG context."""
+
+    def test_build_messages_with_rag_context(self) -> None:
+        """Test that RAG context is added to system prompt."""
+        provider = MockProvider()
+        processor = QueryProcessor(provider)
+
+        rag_context = "Entity: sensor.temp, State: 22°C, Area: Living Room"
+        result = processor._build_messages(
+            "What's the temperature?",
+            [],
+            system_prompt="You are a helpful assistant.",
+            rag_context=rag_context
+        )
+
+        assert len(result) == 2  # system + user
+        assert result[0]["role"] == "system"
+        assert "RELEVANT CONTEXT FROM HOME ASSISTANT" in result[0]["content"]
+        assert rag_context in result[0]["content"]
+        assert "You are a helpful assistant." in result[0]["content"]
+
+    def test_build_messages_with_rag_context_no_system_prompt(self) -> None:
+        """Test RAG context when no system prompt is provided."""
+        provider = MockProvider()
+        processor = QueryProcessor(provider)
+
+        rag_context = "Entity: light.kitchen, State: on"
+        result = processor._build_messages(
+            "Turn off the kitchen light",
+            [],
+            rag_context=rag_context
+        )
+
+        assert len(result) == 2  # system (from RAG) + user
+        assert result[0]["role"] == "system"
+        assert rag_context in result[0]["content"]
+
+    def test_build_messages_without_rag_context(self) -> None:
+        """Test that messages work without RAG context."""
+        provider = MockProvider()
+        processor = QueryProcessor(provider)
+
+        result = processor._build_messages(
+            "Hello",
+            [],
+            system_prompt="Be helpful."
+        )
+
+        assert len(result) == 2
+        assert "RELEVANT CONTEXT" not in result[0]["content"]
+
+
+class TestProcessWithRagContext:
+    """Tests for process method with RAG context."""
+
+    @pytest.mark.asyncio
+    async def test_process_includes_rag_context(self) -> None:
+        """Test that RAG context is passed through to messages."""
+        provider = MockProvider(response="The temperature is 22°C.")
+        processor = QueryProcessor(provider)
+
+        rag_context = "sensor.living_room_temp: 22°C"
+
+        result = await processor.process(
+            query="What's the temperature?",
+            messages=[],
+            rag_context=rag_context
+        )
+
+        assert result["success"] is True
+        # Verify provider received messages with RAG context
+        call_args = provider.get_response.call_args.args[0]
+        system_message = call_args[0]
+        assert system_message["role"] == "system"
+        assert rag_context in system_message["content"]
+
+
 class TestDetectFunctionCall:
     """Tests for _detect_function_call method."""
 

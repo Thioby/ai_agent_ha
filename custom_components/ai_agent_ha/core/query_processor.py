@@ -80,6 +80,7 @@ class QueryProcessor:
         query: str,
         history: list[dict[str, Any]],
         system_prompt: str | None = None,
+        rag_context: str | None = None,
     ) -> list[dict[str, Any]]:
         """Build the message list for the AI provider.
 
@@ -87,15 +88,30 @@ class QueryProcessor:
             query: The current user query.
             history: Previous conversation messages.
             system_prompt: Optional system message to prepend.
+            rag_context: Optional RAG context to include.
 
         Returns:
             List of message dictionaries ready for the provider.
         """
         messages: list[dict[str, Any]] = []
 
-        # Add system prompt first if provided
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+        # Build system prompt with RAG context if available
+        final_system_prompt = system_prompt or ""
+
+        if rag_context:
+            rag_section = (
+                "\n\n--- RELEVANT CONTEXT FROM HOME ASSISTANT ---\n"
+                f"{rag_context}\n"
+                "--- END OF CONTEXT ---\n\n"
+                "Use the above context to provide more accurate and personalized responses."
+            )
+            final_system_prompt = final_system_prompt + rag_section if final_system_prompt else rag_section
+            _LOGGER.info("RAG context added to system prompt (%d chars)", len(rag_context))
+            _LOGGER.debug("RAG context content: %s", rag_context[:500] if len(rag_context) > 500 else rag_context)
+
+        # Add system prompt first if we have one
+        if final_system_prompt:
+            messages.append({"role": "system", "content": final_system_prompt})
 
         # Add conversation history
         messages.extend(history)
@@ -209,9 +225,12 @@ class QueryProcessor:
                 "error": "Query is empty or contains only whitespace",
             }
 
-        # Build the message list
+        # Extract RAG context from kwargs
+        rag_context = kwargs.pop("rag_context", None)
+
+        # Build the message list with RAG context
         built_messages = self._build_messages(
-            sanitized_query, messages, system_prompt=system_prompt
+            sanitized_query, messages, system_prompt=system_prompt, rag_context=rag_context
         )
 
         hass = kwargs.get("hass")

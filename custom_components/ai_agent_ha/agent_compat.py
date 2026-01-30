@@ -288,13 +288,23 @@ class AiAgentHaAgent:
     async def _get_rag_context(self, query: str) -> str | None:
         """Get relevant context from RAG system."""
         if not self._rag_manager:
+            _LOGGER.debug("RAG manager not configured, skipping context retrieval")
             return None
         try:
+            _LOGGER.debug("Querying RAG for context: %s", query[:100])
             results = await self._rag_manager.query(query)
             if results:
-                return "\n".join(str(r) for r in results[:5])
+                context = "\n".join(str(r) for r in results[:5])
+                _LOGGER.info(
+                    "RAG found %d results for query (using top 5, %d chars)",
+                    len(results), len(context)
+                )
+                _LOGGER.debug("RAG context preview: %s", context[:300] if len(context) > 300 else context)
+                return context
+            else:
+                _LOGGER.debug("RAG returned no results for query")
         except Exception as e:
-            _LOGGER.warning("RAG query failed: %s", e)
+            _LOGGER.warning("RAG query failed: %s", e, exc_info=True)
         return None
 
     # === ENTITY OPERATIONS (delegate to EntityManager) ===
