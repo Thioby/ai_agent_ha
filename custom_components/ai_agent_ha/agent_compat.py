@@ -294,12 +294,12 @@ class AiAgentHaAgent:
             return None
         try:
             _LOGGER.debug("Querying RAG for context: %s", query[:100])
-            results = await self._rag_manager.query(query)
-            if results:
-                context = "\n".join(str(r) for r in results[:5])
+            # RAGManager.get_relevant_context returns compressed context string
+            context = await self._rag_manager.get_relevant_context(query)
+            if context:
                 _LOGGER.info(
-                    "RAG found %d results for query (using top 5, %d chars)",
-                    len(results), len(context)
+                    "RAG found relevant context (%d chars)",
+                    len(context)
                 )
                 _LOGGER.debug("RAG context preview: %s", context[:300] if len(context) > 300 else context)
                 return context

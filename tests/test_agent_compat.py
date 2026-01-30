@@ -84,6 +84,36 @@ class TestAiAgentHaAgentCompat:
 
         assert agent._rag_manager == rag
 
+    @pytest.mark.asyncio
+    @patch("custom_components.ai_agent_ha.agent_compat.ProviderRegistry")
+    async def test_get_rag_context_calls_correct_method(self, mock_registry, patch_managers, mock_hass, config):
+        """Test that _get_rag_context calls get_relevant_context on RAG manager."""
+        mock_registry.create.return_value = MagicMock()
+        agent = AiAgentHaAgent(mock_hass, config)
+
+        # Create mock RAG manager with get_relevant_context method
+        rag = MagicMock()
+        rag.get_relevant_context = AsyncMock(return_value="Entity: light.bedroom, state: on")
+        agent.set_rag_manager(rag)
+
+        result = await agent._get_rag_context("turn on bedroom light")
+
+        # Verify correct method was called
+        rag.get_relevant_context.assert_called_once_with("turn on bedroom light")
+        assert result == "Entity: light.bedroom, state: on"
+
+    @pytest.mark.asyncio
+    @patch("custom_components.ai_agent_ha.agent_compat.ProviderRegistry")
+    async def test_get_rag_context_returns_none_when_no_manager(self, mock_registry, patch_managers, mock_hass, config):
+        """Test that _get_rag_context returns None when RAG manager is not set."""
+        mock_registry.create.return_value = MagicMock()
+        agent = AiAgentHaAgent(mock_hass, config)
+        # Don't set RAG manager
+
+        result = await agent._get_rag_context("any query")
+
+        assert result is None
+
     @patch("custom_components.ai_agent_ha.agent_compat.ProviderRegistry")
     def test_clear_conversation_history(self, mock_registry, patch_managers, mock_hass, config):
         """Test clearing conversation history."""
