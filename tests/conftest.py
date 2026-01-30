@@ -4,6 +4,8 @@ import pytest
 import pytest_asyncio
 from homeassistant.util import logging as ha_logging
 
+from tests.fixtures import *
+
 pytest_plugins = "pytest_homeassistant_custom_component"
 
 

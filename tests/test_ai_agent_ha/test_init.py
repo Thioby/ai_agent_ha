@@ -1,7 +1,7 @@
 """Test for AI Agent HA setup."""
 
 import json
-from unittest.mock import patch, MagicMock, AsyncMock, PropertyMock
+from unittest.mock import patch, MagicMock, AsyncMock
 import pytest
 
 from homeassistant.core import HomeAssistant, ServiceCall, Context
