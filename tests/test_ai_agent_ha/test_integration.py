@@ -1,163 +1,128 @@
 """Integration tests for AI Agent HA."""
 
 import pytest
-import asyncio
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-import sys
 import os
+from unittest.mock import AsyncMock, patch, MagicMock
 
-import homeassistant
-from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ai_agent_ha import async_setup_entry, async_unload_entry
 
 
 class TestIntegration:
-    """Test the full integration functionality."""
-
-    @pytest.fixture
-    def mock_hass(self):
-        """Mock Home Assistant instance with full services."""
-        mock = MagicMock()
-        mock.data = {}
-        mock.services = MagicMock()
-        mock.services.async_register = Mock()
-        mock.config = MagicMock()
-        mock.config.path = MagicMock(return_value="/mock/path")
-        mock.bus = MagicMock()
-        mock.states = MagicMock()
-        mock.http = MagicMock()
-        mock.http.async_register_static_paths = AsyncMock()
-        return mock
-
-    @pytest.fixture
-    def mock_config_entry(self):
-        """Mock config entry."""
-        mock = MagicMock()
-        mock.version = 1
-        mock.data = {
-            "ai_provider": "openai",
-            "openai_token": "test_token",
-            "openai_model": "gpt-3.5-turbo",
-        }
-        return mock
+    """Test the full integration functionality with real HA fixtures."""
 
     @pytest.mark.asyncio
-    async def test_full_integration_setup(self, mock_hass, mock_config_entry):
-        """Test the full integration setup process."""
-        with patch.dict(
-            "sys.modules",
-            {
-                "homeassistant.components.frontend": MagicMock(),
-                "homeassistant.components.http": MagicMock(),
-                "homeassistant.helpers.config_validation": MagicMock(),
-                "homeassistant.exceptions": MagicMock(),
-                "homeassistant.helpers.storage": MagicMock(),
-                "voluptuous": MagicMock(),
-                "openai": MagicMock(),
-            },
-        ), patch(
+    async def test_full_integration_setup(self, hass, ai_agent_config_entry):
+        """Test the full integration setup process with real hass."""
+        ai_agent_config_entry.add_to_hass(hass)
+
+        # Mock hass.http since it's not set up in the basic hass fixture
+        hass.http = MagicMock()
+        hass.http.async_register_static_paths = AsyncMock()
+
+        with patch(
             "custom_components.ai_agent_ha.agent_compat.AiAgentHaAgent"
         ) as mock_agent_class:
-
             # Mock agent instance
-            mock_agent = MagicMock()
+            mock_agent = AsyncMock()
             mock_agent_class.return_value = mock_agent
 
-            result = await async_setup_entry(mock_hass, mock_config_entry)
+            result = await async_setup_entry(hass, ai_agent_config_entry)
             assert result is True
 
             # Verify services were registered
-            assert mock_hass.services.async_register.called
+            assert hass.services.has_service("ai_agent_ha", "query")
 
     @pytest.mark.asyncio
-    async def test_service_calls(self, mock_hass, mock_config_entry):
-        """Test service call functionality."""
-        with patch.dict(
-            "sys.modules",
-            {
-                "homeassistant.components.frontend": MagicMock(),
-                "homeassistant.components.http": MagicMock(),
-                "homeassistant.helpers.config_validation": MagicMock(),
-                "homeassistant.exceptions": MagicMock(),
-                "homeassistant.helpers.storage": MagicMock(),
-                "voluptuous": MagicMock(),
-                "openai": MagicMock(),
-            },
-        ), patch(
-            "custom_components.ai_agent_ha.agent_compat.AiAgentHaAgent"
-        ) as mock_agent_class:
+    async def test_service_calls(self, hass, ai_agent_config_entry):
+        """Test service call functionality with real service registry."""
+        ai_agent_config_entry.add_to_hass(hass)
 
-            # Mock agent instance with query method
-            mock_agent = MagicMock()
-            mock_agent.send_query = AsyncMock(return_value="Test response")
-            mock_agent_class.return_value = mock_agent
+        # Mock hass.http since it's not set up in the basic hass fixture
+        hass.http = MagicMock()
+        hass.http.async_register_static_paths = AsyncMock()
 
+        # Create a mock agent with process_query method
+        mock_agent = MagicMock()
+        mock_agent.process_query = AsyncMock(return_value={
+            "success": True,
+            "answer": "The light is on",
+        })
+
+        with patch(
+            "custom_components.ai_agent_ha.AiAgentHaAgent",
+            return_value=mock_agent
+        ):
             # Setup the integration
-            await async_setup_entry(mock_hass, mock_config_entry)
+            await async_setup_entry(hass, ai_agent_config_entry)
+            await hass.async_block_till_done()
 
-            # Get the service handler that was registered
-            service_calls = [
-                call
-                for call in mock_hass.services.async_register.call_args_list
-                if call[0][1] == "query"
-            ]
+            # Verify query service is registered
+            assert hass.services.has_service("ai_agent_ha", "query")
 
-            assert len(service_calls) > 0, "Query service should be registered"
+            # Set up a test entity state
+            hass.states.async_set("light.test", "on", {"brightness": 255})
+
+            # Call the query service with correct parameter name
+            await hass.services.async_call(
+                "ai_agent_ha",
+                "query",
+                {"prompt": "Is the light on?"},
+                blocking=True,
+            )
+
+            # Verify the agent's process_query was called
+            mock_agent.process_query.assert_called_once()
+            # Verify the call arguments include the prompt
+            call_args = mock_agent.process_query.call_args
+            assert call_args[0][0] == "Is the light on?"
 
     @pytest.mark.asyncio
-    async def test_frontend_panel_registration(self, mock_hass, mock_config_entry):
-        """Test frontend panel registration."""
-        with patch.dict(
-            "sys.modules",
-            {
-                "homeassistant.components.frontend": MagicMock(),
-                "homeassistant.components.http": MagicMock(),
-                "homeassistant.helpers.config_validation": MagicMock(),
-                "homeassistant.exceptions": MagicMock(),
-                "homeassistant.helpers.storage": MagicMock(),
-                "voluptuous": MagicMock(),
-                "openai": MagicMock(),
-            },
-        ), patch(
+    async def test_frontend_panel_registration(self, hass, ai_agent_config_entry):
+        """Test frontend panel registration with real hass.http."""
+        ai_agent_config_entry.add_to_hass(hass)
+
+        # Mock hass.http since it's not set up in the basic hass fixture
+        hass.http = MagicMock()
+        hass.http.async_register_static_paths = AsyncMock()
+
+        with patch(
             "custom_components.ai_agent_ha.agent_compat.AiAgentHaAgent"
         ) as mock_agent_class:
-
-            mock_agent = MagicMock()
+            mock_agent = AsyncMock()
             mock_agent_class.return_value = mock_agent
 
-            result = await async_setup_entry(mock_hass, mock_config_entry)
+            result = await async_setup_entry(hass, ai_agent_config_entry)
             assert result is True
 
             # Verify static paths were registered for frontend
-            mock_hass.http.async_register_static_paths.assert_called()
+            hass.http.async_register_static_paths.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_unload_entry(self, mock_hass, mock_config_entry):
-        """Test unloading the integration."""
-        with patch.dict(
-            "sys.modules",
-            {
-                "homeassistant.components.frontend": MagicMock(),
-                "homeassistant.components.http": MagicMock(),
-                "homeassistant.helpers.config_validation": MagicMock(),
-                "homeassistant.exceptions": MagicMock(),
-                "homeassistant.helpers.storage": MagicMock(),
-                "voluptuous": MagicMock(),
-                "openai": MagicMock(),
-            },
-        ), patch(
+    async def test_unload_entry(self, hass, ai_agent_config_entry):
+        """Test unloading the integration with real config entry."""
+        ai_agent_config_entry.add_to_hass(hass)
+
+        # Mock hass.http since it's not set up in the basic hass fixture
+        hass.http = MagicMock()
+        hass.http.async_register_static_paths = AsyncMock()
+
+        with patch(
             "custom_components.ai_agent_ha.agent_compat.AiAgentHaAgent"
         ) as mock_agent_class:
-
-            mock_agent = MagicMock()
+            mock_agent = AsyncMock()
             mock_agent_class.return_value = mock_agent
 
             # Setup first
-            await async_setup_entry(mock_hass, mock_config_entry)
+            await async_setup_entry(hass, ai_agent_config_entry)
+            await hass.async_block_till_done()
+
+            # Verify service was registered
+            assert hass.services.has_service("ai_agent_ha", "query")
 
             # Then unload
-            result = await async_unload_entry(mock_hass, mock_config_entry)
+            result = await async_unload_entry(hass, ai_agent_config_entry)
             assert result is True
 
     def test_manifest_validation(self):

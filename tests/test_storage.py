@@ -45,14 +45,6 @@ class MockStore:
 
 
 @pytest.fixture
-def mock_hass() -> MagicMock:
-    """Create a mock Home Assistant instance."""
-    hass = MagicMock()
-    hass.data = {}
-    return hass
-
-
-@pytest.fixture
 def mock_store_patch():
     """Patch Store globally for all storage operations."""
     with patch(
@@ -63,17 +55,17 @@ def mock_store_patch():
 
 
 @pytest.fixture
-def storage(mock_hass: MagicMock, mock_store_patch) -> SessionStorage:
+def storage(hass, mock_store_patch) -> SessionStorage:
     """Create a SessionStorage instance for testing with mocked Store."""
-    return SessionStorage(mock_hass, "test_user")
+    return SessionStorage(hass, "test_user")
 
 
 @pytest.fixture
-def storage_factory(mock_hass: MagicMock, mock_store_patch):
+def storage_factory(hass, mock_store_patch):
     """Factory to create SessionStorage instances for different users."""
 
     def create(user_id: str) -> SessionStorage:
-        return SessionStorage(mock_hass, user_id)
+        return SessionStorage(hass, user_id)
 
     return create
 
@@ -477,7 +469,7 @@ class TestSessionStorageCleanup:
     """Tests for session cleanup functionality."""
 
     @pytest.mark.asyncio
-    async def test_cleanup_old_sessions(self, mock_hass: MagicMock) -> None:
+    async def test_cleanup_old_sessions(self, hass) -> None:
         """Test that old sessions are cleaned up."""
         old_date = (
             datetime.now(timezone.utc) - timedelta(days=SESSION_RETENTION_DAYS + 1)
@@ -485,7 +477,7 @@ class TestSessionStorageCleanup:
         recent_date = datetime.now(timezone.utc).isoformat()
 
         # Create a mock store with pre-populated data
-        mock_store = MockStore(mock_hass, STORAGE_VERSION, "test")
+        mock_store = MockStore(hass, STORAGE_VERSION, "test")
         mock_store._data = {
             "version": STORAGE_VERSION,
             "sessions": [
@@ -518,7 +510,7 @@ class TestSessionStorageCleanup:
             "custom_components.ai_agent_ha.storage.Store",
             return_value=mock_store,
         ):
-            storage = SessionStorage(mock_hass, "cleanup_test_user")
+            storage = SessionStorage(hass, "cleanup_test_user")
             sessions = await storage.list_sessions()
 
         assert len(sessions) == 1
@@ -529,7 +521,7 @@ class TestSessionStorageMigration:
     """Tests for legacy data migration."""
 
     @pytest.mark.asyncio
-    async def test_migrate_legacy_data(self, mock_hass: MagicMock) -> None:
+    async def test_migrate_legacy_data(self, hass) -> None:
         """Test migration of legacy prompt history."""
         # Track stores created
         stores: dict[str, MockStore] = {}
@@ -548,7 +540,7 @@ class TestSessionStorageMigration:
             "custom_components.ai_agent_ha.storage.Store",
             side_effect=create_store,
         ):
-            storage = SessionStorage(mock_hass, "migration_user")
+            storage = SessionStorage(hass, "migration_user")
             sessions = await storage.list_sessions()
 
         # Should have created one session with migrated messages
@@ -558,7 +550,7 @@ class TestSessionStorageMigration:
 
     @pytest.mark.asyncio
     async def test_migrate_legacy_data_already_migrated(
-        self, mock_hass: MagicMock
+        self, hass
     ) -> None:
         """Test that already migrated data is not migrated again."""
         stores: dict[str, MockStore] = {}
@@ -577,7 +569,7 @@ class TestSessionStorageMigration:
             "custom_components.ai_agent_ha.storage.Store",
             side_effect=create_store,
         ):
-            storage = SessionStorage(mock_hass, "already_migrated_user")
+            storage = SessionStorage(hass, "already_migrated_user")
             sessions = await storage.list_sessions()
 
         # No sessions should be created
@@ -588,17 +580,17 @@ class TestSessionStoragePersistence:
     """Tests for data persistence."""
 
     @pytest.mark.asyncio
-    async def test_data_persists_across_instances(self, mock_hass: MagicMock) -> None:
+    async def test_data_persists_across_instances(self, hass) -> None:
         """Test that data persists when creating new storage instances."""
         # Shared store to simulate persistence
-        shared_store = MockStore(mock_hass, STORAGE_VERSION, "shared")
+        shared_store = MockStore(hass, STORAGE_VERSION, "shared")
 
         with patch(
             "custom_components.ai_agent_ha.storage.Store",
             return_value=shared_store,
         ):
             # Create session with first instance
-            storage1 = SessionStorage(mock_hass, "persist_user")
+            storage1 = SessionStorage(hass, "persist_user")
             session = await storage1.create_session(
                 provider="anthropic", title="Persistent"
             )
@@ -612,7 +604,7 @@ class TestSessionStoragePersistence:
             await storage1.add_message(session.session_id, message)
 
             # Create new instance (simulates restart)
-            storage2 = SessionStorage(mock_hass, "persist_user")
+            storage2 = SessionStorage(hass, "persist_user")
             storage2._data = None  # Force reload
 
             sessions = await storage2.list_sessions()

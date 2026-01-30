@@ -57,14 +57,6 @@ class MockStore:
         cls._stores.clear()
 
 
-@pytest.fixture
-def mock_hass() -> MagicMock:
-    """Create a mock Home Assistant instance."""
-    hass = MagicMock()
-    hass.data = {}
-    return hass
-
-
 @pytest.fixture(autouse=True)
 def reset_mock_stores():
     """Reset mock stores before and after each test."""
@@ -92,9 +84,9 @@ class TestChatFlowIntegration:
     """Test the complete chat flow: create session -> send message -> verify persistence."""
 
     @pytest.mark.asyncio
-    async def test_full_chat_flow(self, mock_hass, mock_store_patch):
+    async def test_full_chat_flow(self, hass, mock_store_patch):
         """Test complete flow: create session, send messages, reload, verify."""
-        storage = SessionStorage(mock_hass, "test_user")
+        storage = SessionStorage(hass, "test_user")
 
         session = await storage.create_session(provider="anthropic")
         assert session.session_id is not None
@@ -118,7 +110,7 @@ class TestChatFlowIntegration:
         )
         await storage.add_message(session.session_id, assistant_msg)
 
-        storage2 = SessionStorage(mock_hass, "test_user")
+        storage2 = SessionStorage(hass, "test_user")
         messages = await storage2.get_session_messages(session.session_id)
 
         assert len(messages) == 2
@@ -128,9 +120,9 @@ class TestChatFlowIntegration:
         assert messages[1].content == "Done! I've turned on the kitchen lights."
 
     @pytest.mark.asyncio
-    async def test_session_title_auto_update(self, mock_hass, mock_store_patch):
+    async def test_session_title_auto_update(self, hass, mock_store_patch):
         """Test that session title updates from first user message."""
-        storage = SessionStorage(mock_hass, "test_user")
+        storage = SessionStorage(hass, "test_user")
 
         session = await storage.create_session(provider="openai")
         assert session.title == "New Conversation"
@@ -150,9 +142,9 @@ class TestChatFlowIntegration:
         assert sessions[0].title == "How do I create an automation for motion..."
 
     @pytest.mark.asyncio
-    async def test_multiple_sessions_isolation(self, mock_hass, mock_store_patch):
+    async def test_multiple_sessions_isolation(self, hass, mock_store_patch):
         """Test that messages are isolated between sessions."""
-        storage = SessionStorage(mock_hass, "test_user")
+        storage = SessionStorage(hass, "test_user")
 
         session1 = await storage.create_session(provider="anthropic")
         session2 = await storage.create_session(provider="openai")
@@ -184,9 +176,9 @@ class TestChatFlowIntegration:
         assert messages2[0].content == "Message for session 2"
 
     @pytest.mark.asyncio
-    async def test_session_delete_cascade(self, mock_hass, mock_store_patch):
+    async def test_session_delete_cascade(self, hass, mock_store_patch):
         """Test that deleting session removes all its messages."""
-        storage = SessionStorage(mock_hass, "test_user")
+        storage = SessionStorage(hass, "test_user")
 
         session = await storage.create_session(provider="anthropic")
 
@@ -212,9 +204,9 @@ class TestChatFlowIntegration:
             await storage.get_session_messages(session.session_id)
 
     @pytest.mark.asyncio
-    async def test_conversation_context_building(self, mock_hass, mock_store_patch):
+    async def test_conversation_context_building(self, hass, mock_store_patch):
         """Test building conversation history for AI context."""
-        storage = SessionStorage(mock_hass, "test_user")
+        storage = SessionStorage(hass, "test_user")
 
         session = await storage.create_session(provider="anthropic")
 
@@ -247,9 +239,9 @@ class TestChatFlowIntegration:
         assert history[-1]["content"] == "What did I just ask you to do?"
 
     @pytest.mark.asyncio
-    async def test_session_preview_updates(self, mock_hass, mock_store_patch):
+    async def test_session_preview_updates(self, hass, mock_store_patch):
         """Test that session preview updates with last user message."""
-        storage = SessionStorage(mock_hass, "test_user")
+        storage = SessionStorage(hass, "test_user")
 
         session = await storage.create_session(provider="anthropic")
 
@@ -278,9 +270,9 @@ class TestChatFlowIntegration:
         assert sessions[0].preview == "Second message about temperature"
 
     @pytest.mark.asyncio
-    async def test_session_message_count(self, mock_hass, mock_store_patch):
+    async def test_session_message_count(self, hass, mock_store_patch):
         """Test that session message count is tracked correctly."""
-        storage = SessionStorage(mock_hass, "test_user")
+        storage = SessionStorage(hass, "test_user")
 
         session = await storage.create_session(provider="anthropic")
 
@@ -298,10 +290,10 @@ class TestChatFlowIntegration:
         assert sessions[0].message_count == 10
 
     @pytest.mark.asyncio
-    async def test_user_isolation(self, mock_hass, mock_store_patch):
+    async def test_user_isolation(self, hass, mock_store_patch):
         """Test that different users have isolated sessions."""
-        storage_user_a = SessionStorage(mock_hass, "user_a")
-        storage_user_b = SessionStorage(mock_hass, "user_b")
+        storage_user_a = SessionStorage(hass, "user_a")
+        storage_user_b = SessionStorage(hass, "user_b")
 
         session_a = await storage_user_a.create_session(provider="anthropic")
         session_b = await storage_user_b.create_session(provider="openai")

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -29,12 +28,11 @@ class TestAnthropicProviderRegistration:
 class TestAnthropicProviderSupportsTools:
     """Tests for AnthropicProvider tool support."""
 
-    def test_supports_tools(self) -> None:
+    def test_supports_tools(self, hass: HomeAssistant) -> None:
         """Test that AnthropicProvider supports tools."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         assert provider.supports_tools is True
 
@@ -42,12 +40,11 @@ class TestAnthropicProviderSupportsTools:
 class TestAnthropicProviderHeaders:
     """Tests for AnthropicProvider header building."""
 
-    def test_build_headers(self) -> None:
+    def test_build_headers(self, hass: HomeAssistant) -> None:
         """Test that _build_headers includes x-api-key and anthropic-version."""
-        mock_hass = MagicMock()
         config = {"api_key": "sk-ant-test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
         headers = provider._build_headers()
 
         assert headers["x-api-key"] == "sk-ant-test-key"
@@ -58,12 +55,11 @@ class TestAnthropicProviderHeaders:
 class TestAnthropicProviderSystemMessage:
     """Tests for AnthropicProvider system message extraction."""
 
-    def test_extract_system_message(self) -> None:
+    def test_extract_system_message(self, hass: HomeAssistant) -> None:
         """Test that _extract_system separates system message from messages."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -78,12 +74,11 @@ class TestAnthropicProviderSystemMessage:
         assert filtered_messages[0]["role"] == "user"
         assert filtered_messages[1]["role"] == "assistant"
 
-    def test_extract_system_message_no_system(self) -> None:
+    def test_extract_system_message_no_system(self, hass: HomeAssistant) -> None:
         """Test _extract_system when no system message present."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         messages = [
             {"role": "user", "content": "Hello"},
@@ -99,12 +94,11 @@ class TestAnthropicProviderSystemMessage:
 class TestAnthropicProviderPayload:
     """Tests for AnthropicProvider payload building."""
 
-    def test_build_payload(self) -> None:
+    def test_build_payload(self, hass: HomeAssistant) -> None:
         """Test that _build_payload creates correct Anthropic payload structure."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key", "model": "claude-sonnet-4-5-20250929"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         messages = [
             {"role": "system", "content": "You are helpful."},
@@ -120,12 +114,11 @@ class TestAnthropicProviderPayload:
         assert payload["messages"][0]["role"] == "user"
         assert payload["messages"][0]["content"] == "Hello"
 
-    def test_build_payload_default_model(self) -> None:
+    def test_build_payload_default_model(self, hass: HomeAssistant) -> None:
         """Test that _build_payload uses default model when not specified."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         messages = [{"role": "user", "content": "Hello"}]
         payload = provider._build_payload(messages)
@@ -134,24 +127,22 @@ class TestAnthropicProviderPayload:
         # Default model should be set
         assert payload["model"] == "claude-sonnet-4-5-20250929"
 
-    def test_build_payload_no_system(self) -> None:
+    def test_build_payload_no_system(self, hass: HomeAssistant) -> None:
         """Test that _build_payload works without system message."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         messages = [{"role": "user", "content": "Hello"}]
         payload = provider._build_payload(messages)
 
         assert "system" not in payload
 
-    def test_build_payload_with_tools(self) -> None:
+    def test_build_payload_with_tools(self, hass: HomeAssistant) -> None:
         """Test that _build_payload includes converted tools."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key", "model": "claude-sonnet-4-5-20250929"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         messages = [{"role": "user", "content": "What's the weather?"}]
         tools = [
@@ -182,12 +173,11 @@ class TestAnthropicProviderPayload:
 class TestAnthropicProviderToolConversion:
     """Tests for AnthropicProvider tool format conversion."""
 
-    def test_convert_tools(self) -> None:
+    def test_convert_tools(self, hass: HomeAssistant) -> None:
         """Test that _convert_tools converts OpenAI format to Anthropic input_schema format."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         openai_tools = [
             {
@@ -215,22 +205,20 @@ class TestAnthropicProviderToolConversion:
         assert anthropic_tools[0]["input_schema"]["type"] == "object"
         assert "location" in anthropic_tools[0]["input_schema"]["properties"]
 
-    def test_convert_tools_empty(self) -> None:
+    def test_convert_tools_empty(self, hass: HomeAssistant) -> None:
         """Test that _convert_tools handles empty list."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         result = provider._convert_tools([])
         assert result == []
 
-    def test_convert_tools_none(self) -> None:
+    def test_convert_tools_none(self, hass: HomeAssistant) -> None:
         """Test that _convert_tools handles None input."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         result = provider._convert_tools(None)
         assert result == []
@@ -239,12 +227,11 @@ class TestAnthropicProviderToolConversion:
 class TestAnthropicProviderResponseExtraction:
     """Tests for AnthropicProvider response extraction."""
 
-    def test_extract_response(self) -> None:
+    def test_extract_response(self, hass: HomeAssistant) -> None:
         """Test that _extract_response extracts text from content[0].text."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         response_data = {
             "id": "msg_123",
@@ -259,12 +246,11 @@ class TestAnthropicProviderResponseExtraction:
 
         assert result == "Hello! How can I help you?"
 
-    def test_extract_response_with_tool_use(self) -> None:
+    def test_extract_response_with_tool_use(self, hass: HomeAssistant) -> None:
         """Test that _extract_response handles tool_use blocks correctly."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         response_data = {
             "id": "msg_456",
@@ -290,12 +276,11 @@ class TestAnthropicProviderResponseExtraction:
         assert parsed["tool_use"]["name"] == "get_weather"
         assert parsed["tool_use"]["input"]["location"] == "San Francisco"
 
-    def test_extract_response_multiple_content_blocks(self) -> None:
+    def test_extract_response_multiple_content_blocks(self, hass: HomeAssistant) -> None:
         """Test _extract_response with multiple content blocks including text and tool_use."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         response_data = {
             "id": "msg_789",
@@ -319,12 +304,11 @@ class TestAnthropicProviderResponseExtraction:
         # Should include the text part at minimum
         assert "Let me check the weather for you." in str(result)
 
-    def test_extract_response_empty_content(self) -> None:
+    def test_extract_response_empty_content(self, hass: HomeAssistant) -> None:
         """Test _extract_response with empty content array."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         response_data = {
             "id": "msg_empty",
@@ -344,11 +328,10 @@ class TestAnthropicProviderResponseExtraction:
 class TestAnthropicProviderAPIUrl:
     """Tests for AnthropicProvider API URL."""
 
-    def test_api_url(self) -> None:
+    def test_api_url(self, hass: HomeAssistant) -> None:
         """Test that api_url returns correct Anthropic API endpoint."""
-        mock_hass = MagicMock()
         config = {"api_key": "test-key"}
 
-        provider = AnthropicProvider(mock_hass, config)
+        provider = AnthropicProvider(hass, config)
 
         assert provider.api_url == "https://api.anthropic.com/v1/messages"

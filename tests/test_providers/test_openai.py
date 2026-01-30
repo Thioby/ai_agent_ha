@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -29,12 +28,11 @@ class TestOpenAIProviderRegistration:
 class TestOpenAIProviderSupportsTools:
     """Tests for OpenAI provider tool support."""
 
-    def test_supports_tools(self) -> None:
+    def test_supports_tools(self, hass: HomeAssistant) -> None:
         """Test that OpenAI provider returns True for supports_tools."""
-        mock_hass = MagicMock()
         config = {"token": "sk-test-key"}
 
-        provider = OpenAIProvider(mock_hass, config)
+        provider = OpenAIProvider(hass, config)
 
         assert provider.supports_tools is True
 
@@ -42,12 +40,11 @@ class TestOpenAIProviderSupportsTools:
 class TestOpenAIProviderBuildHeaders:
     """Tests for OpenAI provider header building."""
 
-    def test_build_headers(self) -> None:
+    def test_build_headers(self, hass: HomeAssistant) -> None:
         """Test Authorization Bearer token and Content-Type headers."""
-        mock_hass = MagicMock()
         config = {"token": "sk-test-key-12345"}
 
-        provider = OpenAIProvider(mock_hass, config)
+        provider = OpenAIProvider(hass, config)
         headers = provider._build_headers()
 
         assert headers["Authorization"] == "Bearer sk-test-key-12345"
@@ -57,36 +54,33 @@ class TestOpenAIProviderBuildHeaders:
 class TestOpenAIProviderBuildPayload:
     """Tests for OpenAI provider payload building."""
 
-    def test_build_payload(self) -> None:
+    def test_build_payload(self, hass: HomeAssistant) -> None:
         """Test that model and messages are in payload."""
-        mock_hass = MagicMock()
         config = {"token": "sk-test-key", "model": "gpt-4"}
 
-        provider = OpenAIProvider(mock_hass, config)
+        provider = OpenAIProvider(hass, config)
         messages = [{"role": "user", "content": "Hello"}]
         payload = provider._build_payload(messages)
 
         assert payload["model"] == "gpt-4"
         assert payload["messages"] == messages
 
-    def test_build_payload_default_model(self) -> None:
+    def test_build_payload_default_model(self, hass: HomeAssistant) -> None:
         """Test that default model is used when not specified."""
-        mock_hass = MagicMock()
         config = {"token": "sk-test-key"}
 
-        provider = OpenAIProvider(mock_hass, config)
+        provider = OpenAIProvider(hass, config)
         messages = [{"role": "user", "content": "Hello"}]
         payload = provider._build_payload(messages)
 
         assert payload["model"] == "gpt-4"
         assert payload["messages"] == messages
 
-    def test_build_payload_with_tools(self) -> None:
+    def test_build_payload_with_tools(self, hass: HomeAssistant) -> None:
         """Test that tools are included when passed."""
-        mock_hass = MagicMock()
         config = {"token": "sk-test-key", "model": "gpt-4"}
 
-        provider = OpenAIProvider(mock_hass, config)
+        provider = OpenAIProvider(hass, config)
         messages = [{"role": "user", "content": "Turn on the lights"}]
         tools = [
             {
@@ -115,12 +109,11 @@ class TestOpenAIProviderBuildPayload:
 class TestOpenAIProviderExtractResponse:
     """Tests for OpenAI provider response extraction."""
 
-    def test_extract_response(self) -> None:
+    def test_extract_response(self, hass: HomeAssistant) -> None:
         """Test extraction from choices[0].message.content."""
-        mock_hass = MagicMock()
         config = {"token": "sk-test-key"}
 
-        provider = OpenAIProvider(mock_hass, config)
+        provider = OpenAIProvider(hass, config)
         response_data = {
             "id": "chatcmpl-123",
             "object": "chat.completion",
@@ -141,12 +134,11 @@ class TestOpenAIProviderExtractResponse:
 
         assert result == "Hello! How can I help you today?"
 
-    def test_extract_response_with_tool_calls(self) -> None:
+    def test_extract_response_with_tool_calls(self, hass: HomeAssistant) -> None:
         """Test handling of tool_calls in response."""
-        mock_hass = MagicMock()
         config = {"token": "sk-test-key"}
 
-        provider = OpenAIProvider(mock_hass, config)
+        provider = OpenAIProvider(hass, config)
         response_data = {
             "id": "chatcmpl-123",
             "object": "chat.completion",
@@ -180,12 +172,11 @@ class TestOpenAIProviderExtractResponse:
         assert len(parsed_result["tool_calls"]) == 1
         assert parsed_result["tool_calls"][0]["function"]["name"] == "turn_on_light"
 
-    def test_extract_response_empty_content(self) -> None:
+    def test_extract_response_empty_content(self, hass: HomeAssistant) -> None:
         """Test handling of empty content in response."""
-        mock_hass = MagicMock()
         config = {"token": "sk-test-key"}
 
-        provider = OpenAIProvider(mock_hass, config)
+        provider = OpenAIProvider(hass, config)
         response_data = {
             "id": "chatcmpl-123",
             "choices": [
@@ -206,11 +197,10 @@ class TestOpenAIProviderExtractResponse:
 class TestOpenAIProviderApiUrl:
     """Tests for OpenAI provider API URL."""
 
-    def test_api_url(self) -> None:
+    def test_api_url(self, hass: HomeAssistant) -> None:
         """Test that api_url returns the correct OpenAI endpoint."""
-        mock_hass = MagicMock()
         config = {"token": "sk-test-key"}
 
-        provider = OpenAIProvider(mock_hass, config)
+        provider = OpenAIProvider(hass, config)
 
         assert provider.api_url == "https://api.openai.com/v1/chat/completions"

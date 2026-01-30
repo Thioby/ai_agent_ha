@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -27,25 +26,23 @@ class TestLocalProviderRegistration:
 class TestLocalProviderSupportsTools:
     """Tests for Local provider tool support."""
 
-    def test_supports_tools_default(self) -> None:
+    def test_supports_tools_default(self, hass: HomeAssistant) -> None:
         """Test that Local provider returns False for supports_tools by default."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
 
         assert provider.supports_tools is False
 
-    def test_supports_tools_configurable(self) -> None:
+    def test_supports_tools_configurable(self, hass: HomeAssistant) -> None:
         """Test that supports_tools is configurable via config."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {"supports_tools": True}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
 
         assert provider.supports_tools is True
 
@@ -53,36 +50,33 @@ class TestLocalProviderSupportsTools:
 class TestLocalProviderApiUrl:
     """Tests for Local provider API URL configuration."""
 
-    def test_api_url_default(self) -> None:
+    def test_api_url_default(self, hass: HomeAssistant) -> None:
         """Test that api_url defaults to localhost:11434 with /api/chat endpoint."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
 
         assert provider.api_url == "http://localhost:11434/api/chat"
 
-    def test_api_url_configurable(self) -> None:
+    def test_api_url_configurable(self, hass: HomeAssistant) -> None:
         """Test that api_url is configurable via config."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {"api_url": "http://192.168.1.100:8080"}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
 
         assert provider.api_url == "http://192.168.1.100:8080/api/chat"
 
-    def test_api_url_removes_trailing_slash(self) -> None:
+    def test_api_url_removes_trailing_slash(self, hass: HomeAssistant) -> None:
         """Test that trailing slash is handled correctly."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {"api_url": "http://192.168.1.100:8080/"}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
 
         # Should not result in double slash
         assert provider.api_url == "http://192.168.1.100:8080/api/chat"
@@ -91,39 +85,36 @@ class TestLocalProviderApiUrl:
 class TestLocalProviderBuildHeaders:
     """Tests for Local provider header building."""
 
-    def test_build_headers_basic(self) -> None:
+    def test_build_headers_basic(self, hass: HomeAssistant) -> None:
         """Test that Content-Type is included in headers."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
         headers = provider._build_headers()
 
         assert headers["Content-Type"] == "application/json"
 
-    def test_build_headers_with_token(self) -> None:
+    def test_build_headers_with_token(self, hass: HomeAssistant) -> None:
         """Test that Authorization header is included when token is provided."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {"token": "my-secret-token"}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
         headers = provider._build_headers()
 
         assert headers["Content-Type"] == "application/json"
         assert headers["Authorization"] == "Bearer my-secret-token"
 
-    def test_build_headers_no_auth_without_token(self) -> None:
+    def test_build_headers_no_auth_without_token(self, hass: HomeAssistant) -> None:
         """Test that Authorization header is not included when token is not provided."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
         headers = provider._build_headers()
 
         assert "Authorization" not in headers
@@ -132,14 +123,13 @@ class TestLocalProviderBuildHeaders:
 class TestLocalProviderBuildPayload:
     """Tests for Local provider payload building."""
 
-    def test_build_payload_basic(self) -> None:
+    def test_build_payload_basic(self, hass: HomeAssistant) -> None:
         """Test that payload has Ollama format with model, messages, stream: false."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {"model": "llama3"}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
         messages = [{"role": "user", "content": "Hello"}]
         payload = provider._build_payload(messages)
 
@@ -147,14 +137,13 @@ class TestLocalProviderBuildPayload:
         assert payload["messages"] == messages
         assert payload["stream"] is False
 
-    def test_build_payload_default_model(self) -> None:
+    def test_build_payload_default_model(self, hass: HomeAssistant) -> None:
         """Test that default model is 'llama2' when not specified."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
         messages = [{"role": "user", "content": "Hello"}]
         payload = provider._build_payload(messages)
 
@@ -162,14 +151,13 @@ class TestLocalProviderBuildPayload:
         assert payload["messages"] == messages
         assert payload["stream"] is False
 
-    def test_build_payload_multiple_messages(self) -> None:
+    def test_build_payload_multiple_messages(self, hass: HomeAssistant) -> None:
         """Test payload with multiple messages."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {"model": "mistral"}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "Hello"},
@@ -186,14 +174,13 @@ class TestLocalProviderBuildPayload:
 class TestLocalProviderExtractResponse:
     """Tests for Local provider response extraction."""
 
-    def test_extract_response(self) -> None:
+    def test_extract_response(self, hass: HomeAssistant) -> None:
         """Test extraction from message.content (Ollama format)."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
         response_data = {
             "model": "llama3",
             "created_at": "2024-01-15T10:00:00Z",
@@ -208,14 +195,13 @@ class TestLocalProviderExtractResponse:
 
         assert result == "Hello! How can I help you today?"
 
-    def test_extract_response_empty_content(self) -> None:
+    def test_extract_response_empty_content(self, hass: HomeAssistant) -> None:
         """Test extraction when content is empty."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
         response_data = {
             "model": "llama3",
             "message": {
@@ -229,14 +215,13 @@ class TestLocalProviderExtractResponse:
 
         assert result == ""
 
-    def test_extract_response_missing_message(self) -> None:
+    def test_extract_response_missing_message(self, hass: HomeAssistant) -> None:
         """Test extraction when message field is missing."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
         response_data = {
             "model": "llama3",
             "done": True,
@@ -246,14 +231,13 @@ class TestLocalProviderExtractResponse:
 
         assert result == ""
 
-    def test_extract_response_missing_content(self) -> None:
+    def test_extract_response_missing_content(self, hass: HomeAssistant) -> None:
         """Test extraction when content field is missing in message."""
         from custom_components.ai_agent_ha.providers.local import LocalProvider
 
-        mock_hass = MagicMock()
         config = {}
 
-        provider = LocalProvider(mock_hass, config)
+        provider = LocalProvider(hass, config)
         response_data = {
             "model": "llama3",
             "message": {

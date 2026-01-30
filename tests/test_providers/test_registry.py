@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -37,9 +36,8 @@ class TestProviderRegistry:
         assert "test_provider" in ProviderRegistry._providers
         assert ProviderRegistry._providers["test_provider"] is TestProvider
 
-    def test_create_provider(self) -> None:
+    def test_create_provider(self, hass: HomeAssistant) -> None:
         """Test factory creates instance with hass and config."""
-        mock_hass = MagicMock()
         config = {"api_key": "test_key"}
 
         @ProviderRegistry.register("test_provider")
@@ -51,19 +49,18 @@ class TestProviderRegistry:
             async def get_response(self, messages: list, **kwargs) -> str:
                 return "test response"
 
-        provider = ProviderRegistry.create("test_provider", mock_hass, config)
+        provider = ProviderRegistry.create("test_provider", hass, config)
 
         assert isinstance(provider, TestProvider)
-        assert provider.hass is mock_hass
+        assert provider.hass is hass
         assert provider.config == config
 
-    def test_create_unknown_provider_raises(self) -> None:
+    def test_create_unknown_provider_raises(self, hass: HomeAssistant) -> None:
         """Test that creating unknown provider raises ValueError."""
-        mock_hass = MagicMock()
         config = {}
 
         with pytest.raises(ValueError, match="Unknown provider: unknown_provider"):
-            ProviderRegistry.create("unknown_provider", mock_hass, config)
+            ProviderRegistry.create("unknown_provider", hass, config)
 
     def test_available_providers(self) -> None:
         """Test listing registered providers."""
@@ -94,17 +91,15 @@ class TestProviderRegistry:
 class TestAIProvider:
     """Tests for AIProvider abstract base class."""
 
-    def test_cannot_instantiate_abstract_class(self) -> None:
+    def test_cannot_instantiate_abstract_class(self, hass: HomeAssistant) -> None:
         """Test that AIProvider cannot be instantiated directly."""
-        mock_hass = MagicMock()
         config = {}
 
         with pytest.raises(TypeError):
-            AIProvider(mock_hass, config)
+            AIProvider(hass, config)
 
-    def test_must_implement_supports_tools(self) -> None:
+    def test_must_implement_supports_tools(self, hass: HomeAssistant) -> None:
         """Test that subclass must implement supports_tools property."""
-        mock_hass = MagicMock()
         config = {}
 
         class IncompleteProvider(AIProvider):
@@ -112,11 +107,10 @@ class TestAIProvider:
                 return "response"
 
         with pytest.raises(TypeError):
-            IncompleteProvider(mock_hass, config)
+            IncompleteProvider(hass, config)
 
-    def test_must_implement_get_response(self) -> None:
+    def test_must_implement_get_response(self, hass: HomeAssistant) -> None:
         """Test that subclass must implement get_response method."""
-        mock_hass = MagicMock()
         config = {}
 
         class IncompleteProvider(AIProvider):
@@ -125,4 +119,4 @@ class TestAIProvider:
                 return True
 
         with pytest.raises(TypeError):
-            IncompleteProvider(mock_hass, config)
+            IncompleteProvider(hass, config)

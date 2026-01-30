@@ -44,40 +44,36 @@ class IncompleteClient(BaseHTTPClient):
 class TestBaseHTTPClientAbstractMethods:
     """Tests for BaseHTTPClient abstract method behavior."""
 
-    def test_build_headers_abstract(self) -> None:
+    def test_build_headers_abstract(self, hass: HomeAssistant) -> None:
         """Test that _build_headers raises NotImplementedError when not implemented."""
-        mock_hass = MagicMock()
         config = {}
 
         # Cannot even instantiate without implementing all abstract methods
         with pytest.raises(TypeError, match="abstract method"):
-            IncompleteClient(mock_hass, config)
+            IncompleteClient(hass, config)
 
-    def test_build_payload_abstract(self) -> None:
+    def test_build_payload_abstract(self, hass: HomeAssistant) -> None:
         """Test that _build_payload raises NotImplementedError when not implemented."""
-        mock_hass = MagicMock()
         config = {}
 
         # Same - abstract methods must all be implemented
         with pytest.raises(TypeError, match="abstract method"):
-            IncompleteClient(mock_hass, config)
+            IncompleteClient(hass, config)
 
-    def test_extract_response_abstract(self) -> None:
+    def test_extract_response_abstract(self, hass: HomeAssistant) -> None:
         """Test that _extract_response raises NotImplementedError when not implemented."""
-        mock_hass = MagicMock()
         config = {}
 
         # Same - abstract methods must all be implemented
         with pytest.raises(TypeError, match="abstract method"):
-            IncompleteClient(mock_hass, config)
+            IncompleteClient(hass, config)
 
 
 class TestBaseHTTPClientSession:
     """Tests for BaseHTTPClient session property."""
 
-    def test_session_uses_async_get_clientsession(self) -> None:
+    def test_session_uses_async_get_clientsession(self, hass: HomeAssistant) -> None:
         """Test that session property uses async_get_clientsession."""
-        mock_hass = MagicMock()
         mock_session = MagicMock()
         config = {}
 
@@ -85,10 +81,10 @@ class TestBaseHTTPClientSession:
             "custom_components.ai_agent_ha.providers.base_client.async_get_clientsession",
             return_value=mock_session,
         ) as mock_get_session:
-            client = ConcreteHTTPClient(mock_hass, config)
+            client = ConcreteHTTPClient(hass, config)
             session = client.session
 
-            mock_get_session.assert_called_once_with(mock_hass)
+            mock_get_session.assert_called_once_with(hass)
             assert session is mock_session
 
 
@@ -96,9 +92,8 @@ class TestBaseHTTPClientGetResponse:
     """Tests for BaseHTTPClient get_response template method."""
 
     @pytest.mark.asyncio
-    async def test_get_response_success(self) -> None:
+    async def test_get_response_success(self, hass: HomeAssistant) -> None:
         """Test successful response from API."""
-        mock_hass = MagicMock()
         config = {}
         messages = [{"role": "user", "content": "Hello"}]
 
@@ -113,15 +108,14 @@ class TestBaseHTTPClientGetResponse:
             "custom_components.ai_agent_ha.providers.base_client.async_get_clientsession",
             return_value=mock_session,
         ):
-            client = ConcreteHTTPClient(mock_hass, config)
+            client = ConcreteHTTPClient(hass, config)
             response = await client.get_response(messages)
 
             assert response == "Hello there!"
 
     @pytest.mark.asyncio
-    async def test_get_response_with_retry_on_failure(self) -> None:
+    async def test_get_response_with_retry_on_failure(self, hass: HomeAssistant) -> None:
         """Test that get_response retries on transient failures."""
-        mock_hass = MagicMock()
         config = {"max_retries": 3, "retry_delay": 0.01}
         messages = [{"role": "user", "content": "Hello"}]
 
@@ -156,16 +150,15 @@ class TestBaseHTTPClientGetResponse:
             "custom_components.ai_agent_ha.providers.base_client.async_get_clientsession",
             return_value=mock_session,
         ):
-            client = ConcreteHTTPClient(mock_hass, config)
+            client = ConcreteHTTPClient(hass, config)
             response = await client.get_response(messages)
 
             assert response == "Success!"
             assert call_count == 2
 
     @pytest.mark.asyncio
-    async def test_get_response_max_retries_exceeded(self) -> None:
+    async def test_get_response_max_retries_exceeded(self, hass: HomeAssistant) -> None:
         """Test that get_response raises after max retries exceeded."""
-        mock_hass = MagicMock()
         config = {"max_retries": 2, "retry_delay": 0.01}
         messages = [{"role": "user", "content": "Hello"}]
 
@@ -184,7 +177,7 @@ class TestBaseHTTPClientGetResponse:
             "custom_components.ai_agent_ha.providers.base_client.async_get_clientsession",
             return_value=mock_session,
         ):
-            client = ConcreteHTTPClient(mock_hass, config)
+            client = ConcreteHTTPClient(hass, config)
 
             with pytest.raises(Exception, match="API request failed"):
                 await client.get_response(messages)

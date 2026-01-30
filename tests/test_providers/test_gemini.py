@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -27,14 +26,13 @@ class TestGeminiProviderRegistration:
 class TestGeminiProviderSupportsTools:
     """Tests for Gemini provider tool support."""
 
-    def test_supports_tools(self) -> None:
+    def test_supports_tools(self, hass: HomeAssistant) -> None:
         """Test that supports_tools returns True."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_api_key"}
 
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         assert provider.supports_tools is True
 
@@ -42,14 +40,13 @@ class TestGeminiProviderSupportsTools:
 class TestGeminiProviderBuildHeaders:
     """Tests for Gemini provider header building."""
 
-    def test_build_headers(self) -> None:
+    def test_build_headers(self, hass: HomeAssistant) -> None:
         """Test that _build_headers includes x-goog-api-key."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_api_key"}
 
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
         headers = provider._build_headers()
 
         assert "x-goog-api-key" in headers
@@ -60,13 +57,12 @@ class TestGeminiProviderBuildHeaders:
 class TestGeminiProviderConvertMessages:
     """Tests for Gemini message format conversion."""
 
-    def test_convert_messages_user_role(self) -> None:
+    def test_convert_messages_user_role(self, hass: HomeAssistant) -> None:
         """Test that user messages are converted to 'user' role."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         messages = [{"role": "user", "content": "Hello"}]
         contents, system = provider._convert_messages(messages)
@@ -76,13 +72,12 @@ class TestGeminiProviderConvertMessages:
         assert contents[0]["parts"] == [{"text": "Hello"}]
         assert system is None
 
-    def test_convert_messages_assistant_to_model(self) -> None:
+    def test_convert_messages_assistant_to_model(self, hass: HomeAssistant) -> None:
         """Test that assistant messages are converted to 'model' role."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         messages = [{"role": "assistant", "content": "Hi there!"}]
         contents, system = provider._convert_messages(messages)
@@ -91,13 +86,12 @@ class TestGeminiProviderConvertMessages:
         assert contents[0]["role"] == "model"
         assert contents[0]["parts"] == [{"text": "Hi there!"}]
 
-    def test_convert_messages_extract_system(self) -> None:
+    def test_convert_messages_extract_system(self, hass: HomeAssistant) -> None:
         """Test that system messages are extracted separately."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -109,13 +103,12 @@ class TestGeminiProviderConvertMessages:
         assert contents[0]["role"] == "user"
         assert system == "You are a helpful assistant."
 
-    def test_convert_messages_multiple_system_messages(self) -> None:
+    def test_convert_messages_multiple_system_messages(self, hass: HomeAssistant) -> None:
         """Test that multiple system messages are concatenated."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         messages = [
             {"role": "system", "content": "First instruction."},
@@ -131,13 +124,12 @@ class TestGeminiProviderConvertMessages:
 class TestGeminiProviderBuildPayload:
     """Tests for Gemini payload building."""
 
-    def test_build_payload_basic(self) -> None:
+    def test_build_payload_basic(self, hass: HomeAssistant) -> None:
         """Test that payload has correct contents structure."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         messages = [{"role": "user", "content": "Hello"}]
         payload = provider._build_payload(messages)
@@ -147,13 +139,12 @@ class TestGeminiProviderBuildPayload:
         assert payload["contents"][0]["role"] == "user"
         assert payload["contents"][0]["parts"] == [{"text": "Hello"}]
 
-    def test_build_payload_with_system_instruction(self) -> None:
+    def test_build_payload_with_system_instruction(self, hass: HomeAssistant) -> None:
         """Test that system instruction is included in payload."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         messages = [
             {"role": "system", "content": "Be helpful."},
@@ -164,13 +155,12 @@ class TestGeminiProviderBuildPayload:
         assert "systemInstruction" in payload
         assert payload["systemInstruction"]["parts"] == [{"text": "Be helpful."}]
 
-    def test_build_payload_no_system_instruction(self) -> None:
+    def test_build_payload_no_system_instruction(self, hass: HomeAssistant) -> None:
         """Test that systemInstruction is absent when no system message."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         messages = [{"role": "user", "content": "Hello"}]
         payload = provider._build_payload(messages)
@@ -181,13 +171,12 @@ class TestGeminiProviderBuildPayload:
 class TestGeminiProviderExtractResponse:
     """Tests for Gemini response extraction."""
 
-    def test_extract_response(self) -> None:
+    def test_extract_response(self, hass: HomeAssistant) -> None:
         """Test extracting response from candidates[0].content.parts[0].text."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         response_data = {
             "candidates": [
@@ -203,26 +192,24 @@ class TestGeminiProviderExtractResponse:
 
         assert result == "Hello from Gemini!"
 
-    def test_extract_response_empty_candidates(self) -> None:
+    def test_extract_response_empty_candidates(self, hass: HomeAssistant) -> None:
         """Test extracting response when candidates is empty."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         response_data = {"candidates": []}
 
         with pytest.raises(ValueError, match="No response"):
             provider._extract_response(response_data)
 
-    def test_extract_response_missing_text(self) -> None:
+    def test_extract_response_missing_text(self, hass: HomeAssistant) -> None:
         """Test extracting response when text is missing."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         response_data = {
             "candidates": [
@@ -241,13 +228,12 @@ class TestGeminiProviderExtractResponse:
 class TestGeminiProviderConvertTools:
     """Tests for Gemini tool format conversion."""
 
-    def test_convert_tools(self) -> None:
+    def test_convert_tools(self, hass: HomeAssistant) -> None:
         """Test converting OpenAI tool format to Gemini functionDeclarations."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         openai_tools = [
             {
@@ -276,25 +262,23 @@ class TestGeminiProviderConvertTools:
         assert declarations[0]["description"] == "Get the weather"
         assert "parameters" in declarations[0]
 
-    def test_convert_tools_empty_list(self) -> None:
+    def test_convert_tools_empty_list(self, hass: HomeAssistant) -> None:
         """Test converting empty tool list."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         gemini_tools = provider._convert_tools([])
 
         assert gemini_tools == []
 
-    def test_convert_tools_multiple(self) -> None:
+    def test_convert_tools_multiple(self, hass: HomeAssistant) -> None:
         """Test converting multiple tools."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         openai_tools = [
             {
@@ -327,27 +311,25 @@ class TestGeminiProviderConvertTools:
 class TestGeminiProviderApiUrl:
     """Tests for Gemini API URL construction."""
 
-    def test_api_url_default_model(self) -> None:
+    def test_api_url_default_model(self, hass: HomeAssistant) -> None:
         """Test API URL with default model."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key"}
 
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         assert "gemini-2.5-flash" in provider.api_url
         assert "generativelanguage.googleapis.com" in provider.api_url
         assert ":generateContent" in provider.api_url
 
-    def test_api_url_custom_model(self) -> None:
+    def test_api_url_custom_model(self, hass: HomeAssistant) -> None:
         """Test API URL with custom model."""
         from custom_components.ai_agent_ha.providers.gemini import GeminiProvider
 
-        mock_hass = MagicMock()
         config = {"token": "test_key", "model": "gemini-pro"}
 
-        provider = GeminiProvider(mock_hass, config)
+        provider = GeminiProvider(hass, config)
 
         assert "gemini-pro" in provider.api_url
         assert "generativelanguage.googleapis.com" in provider.api_url
