@@ -188,18 +188,35 @@ class RAGManager:
             # Extract intent from query using semantic similarity (cached embeddings)
             intent = await self._intent_detector.detect_intent(query)
 
+            # Determine which filters to apply
+            # Priority: domain > device_class (they often conflict, e.g. media_player vs motion)
+            # Area is always safe to combine
+            use_domain = intent.get("domain")
+            use_device_class = intent.get("device_class") if not use_domain else None
+            use_area = intent.get("area")
+
             # Use filtered search if intent detected, otherwise plain search
-            if intent.get("domain") or intent.get("device_class") or intent.get("area"):
+            if use_domain or use_device_class or use_area:
                 _LOGGER.debug(
-                    "RAG using intent-based search: %s", intent
+                    "RAG using intent-based search: domain=%s, device_class=%s, area=%s (raw: %s)",
+                    use_domain, use_device_class, use_area, intent
                 )
                 results = await self._query_engine.search_by_criteria(
                     query=query,
-                    domain=intent.get("domain"),
-                    device_class=intent.get("device_class"),
-                    area=intent.get("area"),
+                    domain=use_domain,
+                    device_class=use_device_class,
+                    area=use_area,
                     top_k=top_k,
                 )
+                # Fallback: if no results with filters, try semantic search without filters
+                if not results:
+                    _LOGGER.debug(
+                        "RAG filtered search returned 0 results, falling back to semantic search"
+                    )
+                    results = await self._query_engine.search_entities(
+                        query=query,
+                        top_k=top_k,
+                    )
             else:
                 results = await self._query_engine.search_entities(
                     query=query,

@@ -227,8 +227,76 @@ async def test_get_relevant_context_with_intent(hass, mock_dependencies):
         area=None,
         top_k=10,
     )
-    # Should NOT call search_entities
+    # Should NOT call search_entities (because search_by_criteria returned results)
     mock_dependencies["query"].search_entities.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_relevant_context_intent_fallback(hass, mock_dependencies):
+    """Test that filtered search falls back to semantic search when no results."""
+    rag = RAGManager(hass, {})
+    await rag.async_initialize()
+
+    # Setup intent detection
+    mock_dependencies["intent"].detect_intent.return_value = {
+        "domain": "media_player",
+        "area": "living_room"
+    }
+
+    # search_by_criteria returns empty (no match for filters)
+    mock_dependencies["query"].search_by_criteria.return_value = []
+
+    # search_entities returns results (fallback)
+    mock_result = MagicMock()
+    mock_result.id = "media_player.tv"
+    mock_dependencies["query"].search_entities.return_value = [mock_result]
+
+    # Set HA state
+    hass.states.async_set("media_player.tv", "off")
+
+    context = await rag.get_relevant_context("tell me about the TV")
+
+    # Should first try search_by_criteria
+    mock_dependencies["query"].search_by_criteria.assert_called_once()
+    # Then fall back to search_entities
+    mock_dependencies["query"].search_entities.assert_called_with(
+        query="tell me about the TV",
+        top_k=10,
+    )
+    # Context should be built from fallback results
+    mock_dependencies["query"].build_compressed_context.assert_called_with([mock_result])
+
+
+@pytest.mark.asyncio
+async def test_get_relevant_context_domain_priority_over_device_class(hass, mock_dependencies):
+    """Test that domain filter takes priority over device_class (to avoid conflicts)."""
+    rag = RAGManager(hass, {})
+    await rag.async_initialize()
+
+    # Intent detection returns both domain and device_class (conflicting)
+    mock_dependencies["intent"].detect_intent.return_value = {
+        "domain": "media_player",
+        "device_class": "motion",  # Wrong - should be ignored
+        "area": "living_room"
+    }
+
+    mock_result = MagicMock()
+    mock_result.id = "media_player.tv"
+    mock_dependencies["query"].search_by_criteria.return_value = [mock_result]
+
+    # Set HA state
+    hass.states.async_set("media_player.tv", "off")
+
+    await rag.get_relevant_context("what about the TV")
+
+    # Should use domain but NOT device_class (domain takes priority)
+    mock_dependencies["query"].search_by_criteria.assert_called_with(
+        query="what about the TV",
+        domain="media_player",
+        device_class=None,  # Ignored because domain is set
+        area="living_room",
+        top_k=10,
+    )
 
 
 @pytest.mark.asyncio
