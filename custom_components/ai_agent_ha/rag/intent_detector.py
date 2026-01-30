@@ -74,16 +74,22 @@ INTENT_PROTOTYPES: dict[str, list[str]] = {
     # Domains
     "domain:light": [
         "turn on the light",
+        "turn off the light",
         "switch the lights",
         "włącz światło",
+        "wyłącz światło",
+        "wylacz swiatlo",
         "zapal lampę",
+        "zgaś światło",
         "light status",
         "stan świateł",
     ],
     "domain:switch": [
         "toggle the switch",
         "turn on the outlet",
+        "turn off the outlet",
         "włącz przełącznik",
+        "wyłącz przełącznik",
         "gniazdko",
     ],
     "domain:cover": [
@@ -116,9 +122,14 @@ INTENT_PROTOTYPES: dict[str, list[str]] = {
     "domain:media_player": [
         "play music",
         "pause the tv",
+        "turn on the tv",
+        "turn off the tv",
+        "włącz telewizor",
+        "wyłącz telewizor",
         "odtwórz muzykę",
         "głośność",
         "telewizor",
+        "tv history",
     ],
     "domain:camera": [
         "show camera",
