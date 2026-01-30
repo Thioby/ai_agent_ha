@@ -13,6 +13,7 @@ def mock_dependencies():
          patch("custom_components.ai_agent_ha.rag.embeddings.create_embedding_provider") as mock_create_emb, \
          patch("custom_components.ai_agent_ha.rag.entity_indexer.EntityIndexer") as mock_indexer_cls, \
          patch("custom_components.ai_agent_ha.rag.query_engine.QueryEngine") as mock_query_cls, \
+         patch("custom_components.ai_agent_ha.rag.intent_detector.IntentDetector") as mock_intent_cls, \
          patch("custom_components.ai_agent_ha.rag.semantic_learner.SemanticLearner") as mock_learner_cls, \
          patch("custom_components.ai_agent_ha.rag.event_handlers.EntityRegistryEventHandler") as mock_handler_cls:
 
@@ -35,8 +36,11 @@ def mock_dependencies():
         mock_query = mock_query_cls.return_value
         mock_query.search_entities = AsyncMock(return_value=[])
         mock_query.search_by_criteria = AsyncMock(return_value=[])
-        mock_query.extract_query_intent = MagicMock(return_value={})  # No intent by default
         mock_query.build_compressed_context = MagicMock(return_value="context")
+
+        mock_intent = mock_intent_cls.return_value
+        mock_intent.async_initialize = AsyncMock()
+        mock_intent.detect_intent = AsyncMock(return_value={})  # No intent by default
 
         mock_learner = mock_learner_cls.return_value
         mock_learner.async_load = AsyncMock()
@@ -57,6 +61,8 @@ def mock_dependencies():
             "indexer": mock_indexer,
             "query_cls": mock_query_cls,
             "query": mock_query,
+            "intent_cls": mock_intent_cls,
+            "intent": mock_intent,
             "learner_cls": mock_learner_cls,
             "learner": mock_learner,
             "handler_cls": mock_handler_cls,
@@ -199,8 +205,8 @@ async def test_get_relevant_context_with_intent(hass, mock_dependencies):
     rag = RAGManager(hass, {})
     await rag.async_initialize()
 
-    # Setup intent detection to return temperature filter
-    mock_dependencies["query"].extract_query_intent.return_value = {
+    # Setup intent detection to return temperature filter (semantic detection)
+    mock_dependencies["intent"].detect_intent.return_value = {
         "device_class": "temperature"
     }
 

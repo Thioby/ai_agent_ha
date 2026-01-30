@@ -46,6 +46,7 @@ class RAGManager:
     _embedding_provider: Any | None = field(default=None, repr=False)  # EmbeddingProvider
     _indexer: Any | None = field(default=None, repr=False)  # EntityIndexer
     _query_engine: Any | None = field(default=None, repr=False)  # QueryEngine
+    _intent_detector: Any | None = field(default=None, repr=False)  # IntentDetector
     _learner: Any | None = field(default=None, repr=False)  # SemanticLearner
     _event_handlers: Any | None = field(default=None, repr=False)  # EventHandlers
     _initialized: bool = field(default=False, repr=False)
@@ -109,7 +110,15 @@ class RAGManager:
                 embedding_provider=self._embedding_provider,
             )
 
-            # 5. Initialize semantic learner
+            # 5. Initialize intent detector (semantic intent detection with cached embeddings)
+            from .intent_detector import IntentDetector
+
+            self._intent_detector = IntentDetector(
+                embedding_provider=self._embedding_provider,
+            )
+            await self._intent_detector.async_initialize()
+
+            # 6. Initialize semantic learner
             from .semantic_learner import SemanticLearner
 
             learner_storage_path = self.hass.config.path(
@@ -122,7 +131,7 @@ class RAGManager:
             )
             await self._learner.async_load()
 
-            # 6. Initialize event handlers
+            # 7. Initialize event handlers
             from .event_handlers import EntityRegistryEventHandler
 
             self._event_handlers = EntityRegistryEventHandler(
@@ -131,7 +140,7 @@ class RAGManager:
             )
             await self._event_handlers.async_start()
 
-            # 7. Perform initial full reindex if needed
+            # 8. Perform initial full reindex if needed
             doc_count = await self._store.get_document_count()
             if doc_count == 0:
                 _LOGGER.info("No indexed entities found, performing full reindex...")
@@ -176,8 +185,8 @@ class RAGManager:
         self._ensure_initialized()
 
         try:
-            # Extract intent from query to apply smart filtering
-            intent = self._query_engine.extract_query_intent(query)
+            # Extract intent from query using semantic similarity (cached embeddings)
+            intent = await self._intent_detector.detect_intent(query)
 
             # Use filtered search if intent detected, otherwise plain search
             if intent.get("domain") or intent.get("device_class") or intent.get("area"):
