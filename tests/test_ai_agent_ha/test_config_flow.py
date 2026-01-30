@@ -13,14 +13,6 @@ from custom_components.ai_agent_ha.const import DOMAIN, AI_PROVIDERS
 class TestConfigFlow:
     """Test the config flow."""
 
-    @pytest.fixture
-    def mock_hass(self):
-        """Mock Home Assistant instance."""
-        mock = MagicMock()
-        mock.data = {}
-        mock.config_entries = MagicMock()
-        return mock
-
     def test_config_flow_import(self):
         """Test that config flow can be imported without errors."""
         assert AiAgentHaConfigFlow is not None

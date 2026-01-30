@@ -7,13 +7,6 @@ from custom_components.ai_agent_ha.rag import RAGManager
 
 
 @pytest.fixture
-def mock_hass(hass):
-    """Fixture for HomeAssistant."""
-    hass.config.path = MagicMock(side_effect=lambda *args: "/".join(args))
-    return hass
-
-
-@pytest.fixture
 def mock_dependencies():
     """Mock all internal RAG dependencies."""
     with patch("custom_components.ai_agent_ha.rag.sqlite_store.SqliteStore") as mock_store_cls, \
@@ -69,18 +62,17 @@ def mock_dependencies():
         }
 
 
-def test_get_persist_directory(mock_hass):
+def test_get_persist_directory(hass):
     """Test _get_persist_directory returns correct path."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     path = rag._get_persist_directory()
-    assert path == "ai_agent_ha/rag_db"
-    mock_hass.config.path.assert_called_with("ai_agent_ha", "rag_db")
+    assert path.endswith("ai_agent_ha/rag_db")
 
 
 @pytest.mark.asyncio
-async def test_async_initialize_success(mock_hass, mock_dependencies):
+async def test_async_initialize_success(hass, mock_dependencies):
     """Test successful initialization of all components."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     
     await rag.async_initialize()
     
@@ -100,9 +92,9 @@ async def test_async_initialize_success(mock_hass, mock_dependencies):
 
 
 @pytest.mark.asyncio
-async def test_async_initialize_already_initialized(mock_hass, mock_dependencies):
+async def test_async_initialize_already_initialized(hass, mock_dependencies):
     """Test initialization is skipped if already initialized."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     rag._initialized = True
     
     await rag.async_initialize()
@@ -111,10 +103,10 @@ async def test_async_initialize_already_initialized(mock_hass, mock_dependencies
 
 
 @pytest.mark.asyncio
-async def test_async_initialize_empty_store_reindex(mock_hass, mock_dependencies):
+async def test_async_initialize_empty_store_reindex(hass, mock_dependencies):
     """Test full reindex is triggered if store is empty."""
     mock_dependencies["store"].get_document_count.return_value = 0
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     
     await rag.async_initialize()
     
@@ -122,10 +114,10 @@ async def test_async_initialize_empty_store_reindex(mock_hass, mock_dependencies
 
 
 @pytest.mark.asyncio
-async def test_async_initialize_exception(mock_hass, mock_dependencies):
+async def test_async_initialize_exception(hass, mock_dependencies):
     """Test exception during initialization is logged and raised."""
     mock_dependencies["store"].async_initialize.side_effect = Exception("DB Error")
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     
     with pytest.raises(Exception, match="DB Error"):
         await rag.async_initialize()
@@ -133,18 +125,18 @@ async def test_async_initialize_exception(mock_hass, mock_dependencies):
     assert not rag.is_initialized
 
 
-def test_ensure_initialized_raises(mock_hass):
+def test_ensure_initialized_raises(hass):
     """Test _ensure_initialized raises RuntimeError if not initialized."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     
     with pytest.raises(RuntimeError, match="not initialized"):
         rag._ensure_initialized()
 
 
 @pytest.mark.asyncio
-async def test_get_relevant_context_success(mock_hass, mock_dependencies):
+async def test_get_relevant_context_success(hass, mock_dependencies):
     """Test fetching relevant context successfully."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     await rag.async_initialize()
     
     # Setup mock results
@@ -153,7 +145,7 @@ async def test_get_relevant_context_success(mock_hass, mock_dependencies):
     mock_dependencies["query"].search_entities.return_value = [mock_result]
     
     # Set HA state to simulate entity exists
-    mock_hass.states.async_set("light.living_room", "on")
+    hass.states.async_set("light.living_room", "on")
     
     context = await rag.get_relevant_context("turn on light")
     
@@ -165,9 +157,9 @@ async def test_get_relevant_context_success(mock_hass, mock_dependencies):
 
 
 @pytest.mark.asyncio
-async def test_get_relevant_context_stale_entity(mock_hass, mock_dependencies):
+async def test_get_relevant_context_stale_entity(hass, mock_dependencies):
     """Test stale entities are removed from index."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     await rag.async_initialize()
     
     # Setup mock result
@@ -187,9 +179,9 @@ async def test_get_relevant_context_stale_entity(mock_hass, mock_dependencies):
 
 
 @pytest.mark.asyncio
-async def test_get_relevant_context_exception(mock_hass, mock_dependencies):
+async def test_get_relevant_context_exception(hass, mock_dependencies):
     """Test graceful failure when getting context."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     await rag.async_initialize()
     
     mock_dependencies["query"].search_entities.side_effect = Exception("Search failed")
@@ -200,9 +192,9 @@ async def test_get_relevant_context_exception(mock_hass, mock_dependencies):
 
 
 @pytest.mark.asyncio
-async def test_learn_from_conversation_success(mock_hass, mock_dependencies):
+async def test_learn_from_conversation_success(hass, mock_dependencies):
     """Test learning from conversation delegates to learner."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     await rag.async_initialize()
     
     await rag.learn_from_conversation("user msg", "assistant msg")
@@ -214,9 +206,9 @@ async def test_learn_from_conversation_success(mock_hass, mock_dependencies):
 
 
 @pytest.mark.asyncio
-async def test_learn_from_conversation_exception(mock_hass, mock_dependencies):
+async def test_learn_from_conversation_exception(hass, mock_dependencies):
     """Test learning exception doesn't crash."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     await rag.async_initialize()
     
     mock_dependencies["learner"].detect_and_persist.side_effect = Exception("Learn error")
@@ -226,9 +218,9 @@ async def test_learn_from_conversation_exception(mock_hass, mock_dependencies):
 
 
 @pytest.mark.asyncio
-async def test_reindex_entity(mock_hass, mock_dependencies):
+async def test_reindex_entity(hass, mock_dependencies):
     """Test reindexing a single entity."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     await rag.async_initialize()
     
     await rag.reindex_entity("switch.test")
@@ -237,9 +229,9 @@ async def test_reindex_entity(mock_hass, mock_dependencies):
 
 
 @pytest.mark.asyncio
-async def test_remove_entity(mock_hass, mock_dependencies):
+async def test_remove_entity(hass, mock_dependencies):
     """Test removing a single entity."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     await rag.async_initialize()
     
     await rag.remove_entity("switch.test")
@@ -248,9 +240,9 @@ async def test_remove_entity(mock_hass, mock_dependencies):
 
 
 @pytest.mark.asyncio
-async def test_full_reindex(mock_hass, mock_dependencies):
+async def test_full_reindex(hass, mock_dependencies):
     """Test triggering a full reindex."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     await rag.async_initialize()
     
     await rag.full_reindex()
@@ -261,9 +253,9 @@ async def test_full_reindex(mock_hass, mock_dependencies):
 
 
 @pytest.mark.asyncio
-async def test_get_stats(mock_hass, mock_dependencies):
+async def test_get_stats(hass, mock_dependencies):
     """Test retrieving statistics."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     await rag.async_initialize()
     
     stats = await rag.get_stats()
@@ -275,9 +267,9 @@ async def test_get_stats(mock_hass, mock_dependencies):
 
 
 @pytest.mark.asyncio
-async def test_async_shutdown_success(mock_hass, mock_dependencies):
+async def test_async_shutdown_success(hass, mock_dependencies):
     """Test successful shutdown sequence."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     await rag.async_initialize()
     
     await rag.async_shutdown()
@@ -289,9 +281,9 @@ async def test_async_shutdown_success(mock_hass, mock_dependencies):
 
 
 @pytest.mark.asyncio
-async def test_async_shutdown_exception(mock_hass, mock_dependencies):
+async def test_async_shutdown_exception(hass, mock_dependencies):
     """Test exception during shutdown is raised."""
-    rag = RAGManager(mock_hass, {})
+    rag = RAGManager(hass, {})
     await rag.async_initialize()
     
     mock_dependencies["store"].async_shutdown.side_effect = Exception("Shutdown error")

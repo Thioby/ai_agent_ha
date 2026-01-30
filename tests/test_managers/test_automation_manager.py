@@ -28,20 +28,15 @@ class MockState:
 
 
 @pytest.fixture
-def mock_hass():
-    """Create a mock Home Assistant instance."""
-    hass = MagicMock()
+def automation_manager(hass):
+    """Create an AutomationManager with mocked hass."""
+    # Mock states and services on the real hass object to support existing tests
     hass.states = MagicMock()
     hass.services = MagicMock()
     hass.services.async_call = AsyncMock()
     hass.services.has_service = MagicMock(return_value=True)
-    return hass
-
-
-@pytest.fixture
-def automation_manager(mock_hass):
-    """Create an AutomationManager with mocked hass."""
-    return AutomationManager(mock_hass)
+    
+    return AutomationManager(hass)
 
 
 @pytest.fixture
@@ -229,17 +224,17 @@ class TestCreateAutomation:
     """Tests for create_automation method."""
 
     @pytest.mark.asyncio
-    async def test_create_automation(self, automation_manager, mock_hass, valid_automation_config):
+    async def test_create_automation(self, automation_manager, hass, valid_automation_config):
         """Test that create_automation calls hass.services.async_call."""
         result = await automation_manager.create_automation(valid_automation_config)
 
         # Should call the automation reload service
-        mock_hass.services.async_call.assert_called()
+        hass.services.async_call.assert_called()
         assert result is not None
         assert "success" in result or "id" in result
 
     @pytest.mark.asyncio
-    async def test_create_automation_generates_id_if_missing(self, automation_manager, mock_hass):
+    async def test_create_automation_generates_id_if_missing(self, automation_manager, hass):
         """Test that create_automation generates an ID if not provided."""
         config = {
             "alias": "Auto ID Automation",
@@ -254,7 +249,7 @@ class TestCreateAutomation:
         assert "id" in result
 
     @pytest.mark.asyncio
-    async def test_create_automation_uses_provided_id(self, automation_manager, mock_hass):
+    async def test_create_automation_uses_provided_id(self, automation_manager, hass):
         """Test that create_automation uses the provided ID."""
         config = {
             "id": "custom_automation_id",
@@ -272,9 +267,9 @@ class TestCreateAutomation:
 class TestGetAutomations:
     """Tests for get_automations method."""
 
-    def test_get_automations(self, automation_manager, mock_hass, sample_automation_states):
+    def test_get_automations(self, automation_manager, hass, sample_automation_states):
         """Test that get_automations returns list from hass.states.async_all("automation")."""
-        mock_hass.states.async_all.return_value = sample_automation_states
+        hass.states.async_all.return_value = sample_automation_states
 
         result = automation_manager.get_automations()
 
@@ -285,23 +280,23 @@ class TestGetAutomations:
         assert "automation.evening_routine" in entity_ids
         assert "automation.motion_alert" in entity_ids
 
-    def test_get_automations_empty(self, automation_manager, mock_hass):
+    def test_get_automations_empty(self, automation_manager, hass):
         """Test that get_automations returns empty list when no automations."""
-        mock_hass.states.async_all.return_value = []
+        hass.states.async_all.return_value = []
 
         result = automation_manager.get_automations()
 
         assert isinstance(result, list)
         assert len(result) == 0
 
-    def test_get_automations_filters_by_domain(self, automation_manager, mock_hass, sample_automation_states):
+    def test_get_automations_filters_by_domain(self, automation_manager, hass, sample_automation_states):
         """Test that get_automations only returns automation domain entities."""
         # Add some non-automation entities
         mixed_states = sample_automation_states + [
             MockState("light.test", "on", {}),
             MockState("sensor.test", "25", {}),
         ]
-        mock_hass.states.async_all.return_value = mixed_states
+        hass.states.async_all.return_value = mixed_states
 
         result = automation_manager.get_automations()
 
@@ -310,10 +305,10 @@ class TestGetAutomations:
             assert entity["entity_id"].startswith("automation.")
 
     def test_get_automations_returns_proper_dict_structure(
-        self, automation_manager, mock_hass, sample_automation_states
+        self, automation_manager, hass, sample_automation_states
     ):
         """Test that get_automations returns proper dict structure."""
-        mock_hass.states.async_all.return_value = sample_automation_states
+        hass.states.async_all.return_value = sample_automation_states
 
         result = automation_manager.get_automations()
 
@@ -328,13 +323,13 @@ class TestToggleAutomationOn:
     """Tests for toggle_automation with enable=True."""
 
     @pytest.mark.asyncio
-    async def test_toggle_automation_on(self, automation_manager, mock_hass):
+    async def test_toggle_automation_on(self, automation_manager, hass):
         """Test that toggle_automation with enable=True calls automation.turn_on."""
         entity_id = "automation.morning_lights"
 
         result = await automation_manager.toggle_automation(entity_id, enable=True)
 
-        mock_hass.services.async_call.assert_called_once_with(
+        hass.services.async_call.assert_called_once_with(
             "automation",
             "turn_on",
             {"entity_id": entity_id},
@@ -343,7 +338,7 @@ class TestToggleAutomationOn:
         assert result.get("success") is True
 
     @pytest.mark.asyncio
-    async def test_toggle_automation_on_returns_entity_id(self, automation_manager, mock_hass):
+    async def test_toggle_automation_on_returns_entity_id(self, automation_manager, hass):
         """Test that toggle_automation returns the entity_id in result."""
         entity_id = "automation.test_automation"
 
@@ -356,13 +351,13 @@ class TestToggleAutomationOff:
     """Tests for toggle_automation with enable=False."""
 
     @pytest.mark.asyncio
-    async def test_toggle_automation_off(self, automation_manager, mock_hass):
+    async def test_toggle_automation_off(self, automation_manager, hass):
         """Test that toggle_automation with enable=False calls automation.turn_off."""
         entity_id = "automation.evening_routine"
 
         result = await automation_manager.toggle_automation(entity_id, enable=False)
 
-        mock_hass.services.async_call.assert_called_once_with(
+        hass.services.async_call.assert_called_once_with(
             "automation",
             "turn_off",
             {"entity_id": entity_id},
@@ -371,7 +366,7 @@ class TestToggleAutomationOff:
         assert result.get("success") is True
 
     @pytest.mark.asyncio
-    async def test_toggle_automation_off_returns_entity_id(self, automation_manager, mock_hass):
+    async def test_toggle_automation_off_returns_entity_id(self, automation_manager, hass):
         """Test that toggle_automation returns the entity_id in result."""
         entity_id = "automation.test_automation"
 
@@ -383,11 +378,11 @@ class TestToggleAutomationOff:
 class TestAutomationManagerInitialization:
     """Tests for AutomationManager initialization."""
 
-    def test_init_stores_hass(self, mock_hass):
+    def test_init_stores_hass(self, hass):
         """Test that AutomationManager stores hass reference."""
-        manager = AutomationManager(mock_hass)
+        manager = AutomationManager(hass)
 
-        assert manager.hass is mock_hass
+        assert manager.hass is hass
 
     def test_init_with_none_hass_raises(self):
         """Test that AutomationManager raises error with None hass."""

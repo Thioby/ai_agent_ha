@@ -42,20 +42,26 @@ class MockLovelaceData:
 
 
 @pytest.fixture
-def mock_hass():
-    """Create a mock Home Assistant instance."""
-    hass = MagicMock()
-    hass.data = {}
-    hass.config = MagicMock()
-    hass.config.path = MagicMock(side_effect=lambda x: f"/config/{x}")
-    hass.async_add_executor_job = AsyncMock(side_effect=lambda f, *args: f(*args) if args else f())
-    return hass
-
-
-@pytest.fixture
-def dashboard_manager(mock_hass):
+def dashboard_manager(hass):
     """Create a DashboardManager with mocked hass."""
-    return DashboardManager(mock_hass)
+    # Setup necessary mocks on hass if they aren't already present
+    if not hasattr(hass, "config"):
+        hass.config = MagicMock()
+    
+    # Ensure config.path works as expected if not already set
+    if not hasattr(hass.config, "path"):
+        hass.config.path = MagicMock(side_effect=lambda x: f"/config/{x}")
+    else:
+        # If it exists (real hass), we might want to mock it for predictable paths in tests
+        # or just leave it. The original mock forced /config/. 
+        # Let's mock it to match previous behavior for safety.
+        hass.config.path = MagicMock(side_effect=lambda x: f"/config/{x}")
+        
+    # Ensure async_add_executor_job is a mock/async-compatible
+    # Real hass has this, but we want to avoid actual thread pools in unit tests usually
+    hass.async_add_executor_job = AsyncMock(side_effect=lambda f, *args: f(*args) if args else f())
+    
+    return DashboardManager(hass)
 
 
 @pytest.fixture
@@ -83,11 +89,11 @@ class TestGetDashboards:
 
     @pytest.mark.asyncio
     async def test_get_dashboards_returns_list(
-        self, dashboard_manager, mock_hass, sample_dashboards, sample_yaml_dashboards
+        self, dashboard_manager, hass, sample_dashboards, sample_yaml_dashboards
     ):
         """Test that get_dashboards returns a list of dashboards."""
         mock_lovelace_data = MockLovelaceData(sample_dashboards, sample_yaml_dashboards)
-        mock_hass.data["lovelace"] = mock_lovelace_data
+        hass.data["lovelace"] = mock_lovelace_data
 
         result = await dashboard_manager.get_dashboards()
 
@@ -96,11 +102,11 @@ class TestGetDashboards:
 
     @pytest.mark.asyncio
     async def test_get_dashboards_returns_dashboard_info(
-        self, dashboard_manager, mock_hass, sample_dashboards, sample_yaml_dashboards
+        self, dashboard_manager, hass, sample_dashboards, sample_yaml_dashboards
     ):
         """Test that get_dashboards returns proper dashboard info."""
         mock_lovelace_data = MockLovelaceData(sample_dashboards, sample_yaml_dashboards)
-        mock_hass.data["lovelace"] = mock_lovelace_data
+        hass.data["lovelace"] = mock_lovelace_data
 
         result = await dashboard_manager.get_dashboards()
 
@@ -117,21 +123,35 @@ class TestGetDashboards:
             assert "show_in_sidebar" in dashboard
 
     @pytest.mark.asyncio
-    async def test_get_dashboards_lovelace_not_available(self, dashboard_manager, mock_hass):
+    async def test_get_dashboards_lovelace_not_available(self, dashboard_manager, hass):
         """Test that get_dashboards handles missing lovelace gracefully."""
-        mock_hass.data = {}
+        # Clean data to simulate missing lovelace
+        # Note: hass.data is a dict, we can't just replace it with {}, but we can clear it or remove 'lovelace'
+        if "lovelace" in hass.data:
+            del hass.data["lovelace"]
+        # Or if the test expects empty data
+        # hass.data = {} # This might break other things in a real hass fixture, but for this test scope it might be fine.
+        # Let's try to just ensure 'lovelace' is missing.
+        
+        # The original test did: mock_hass.data = {}
+        # Let's replicate that behavior safely
+        original_data = hass.data
+        hass.data = {}
 
-        result = await dashboard_manager.get_dashboards()
+        try:
+            result = await dashboard_manager.get_dashboards()
 
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert "error" in result[0]
+            assert isinstance(result, list)
+            assert len(result) == 1
+            assert "error" in result[0]
+        finally:
+            hass.data = original_data
 
     @pytest.mark.asyncio
-    async def test_get_dashboards_empty_list(self, dashboard_manager, mock_hass):
+    async def test_get_dashboards_empty_list(self, dashboard_manager, hass):
         """Test that get_dashboards returns empty list when no dashboards exist."""
         mock_lovelace_data = MockLovelaceData({}, {})
-        mock_hass.data["lovelace"] = mock_lovelace_data
+        hass.data["lovelace"] = mock_lovelace_data
 
         result = await dashboard_manager.get_dashboards()
 
@@ -144,11 +164,11 @@ class TestGetDashboardConfig:
 
     @pytest.mark.asyncio
     async def test_get_dashboard_config_default(
-        self, dashboard_manager, mock_hass, sample_dashboards
+        self, dashboard_manager, hass, sample_dashboards
     ):
         """Test getting default dashboard config."""
         mock_lovelace_data = MockLovelaceData(sample_dashboards)
-        mock_hass.data["lovelace"] = mock_lovelace_data
+        hass.data["lovelace"] = mock_lovelace_data
 
         result = await dashboard_manager.get_dashboard_config(None)
 
@@ -158,11 +178,11 @@ class TestGetDashboardConfig:
 
     @pytest.mark.asyncio
     async def test_get_dashboard_config_by_url(
-        self, dashboard_manager, mock_hass, sample_dashboards
+        self, dashboard_manager, hass, sample_dashboards
     ):
         """Test getting dashboard config by URL path."""
         mock_lovelace_data = MockLovelaceData(sample_dashboards)
-        mock_hass.data["lovelace"] = mock_lovelace_data
+        hass.data["lovelace"] = mock_lovelace_data
 
         result = await dashboard_manager.get_dashboard_config("energy")
 
@@ -171,11 +191,11 @@ class TestGetDashboardConfig:
 
     @pytest.mark.asyncio
     async def test_get_dashboard_config_not_found(
-        self, dashboard_manager, mock_hass, sample_dashboards
+        self, dashboard_manager, hass, sample_dashboards
     ):
         """Test that get_dashboard_config returns error for non-existent dashboard."""
         mock_lovelace_data = MockLovelaceData(sample_dashboards)
-        mock_hass.data["lovelace"] = mock_lovelace_data
+        hass.data["lovelace"] = mock_lovelace_data
 
         result = await dashboard_manager.get_dashboard_config("nonexistent")
 
@@ -183,21 +203,24 @@ class TestGetDashboardConfig:
 
     @pytest.mark.asyncio
     async def test_get_dashboard_config_lovelace_not_available(
-        self, dashboard_manager, mock_hass
+        self, dashboard_manager, hass
     ):
         """Test that get_dashboard_config handles missing lovelace."""
-        mock_hass.data = {}
+        original_data = hass.data
+        hass.data = {}
 
-        result = await dashboard_manager.get_dashboard_config("energy")
-
-        assert "error" in result
+        try:
+            result = await dashboard_manager.get_dashboard_config("energy")
+            assert "error" in result
+        finally:
+            hass.data = original_data
 
 
 class TestCreateDashboard:
     """Tests for create_dashboard method."""
 
     @pytest.mark.asyncio
-    async def test_create_dashboard_success(self, dashboard_manager, mock_hass):
+    async def test_create_dashboard_success(self, dashboard_manager, hass):
         """Test creating a new dashboard successfully."""
         config = {
             "title": "New Dashboard",
@@ -213,7 +236,7 @@ class TestCreateDashboard:
         assert "url_path" in result
 
     @pytest.mark.asyncio
-    async def test_create_dashboard_missing_title(self, dashboard_manager, mock_hass):
+    async def test_create_dashboard_missing_title(self, dashboard_manager, hass):
         """Test that create_dashboard fails without title."""
         config = {
             "url_path": "new-dashboard",
@@ -225,7 +248,7 @@ class TestCreateDashboard:
         assert "title" in result["error"].lower()
 
     @pytest.mark.asyncio
-    async def test_create_dashboard_missing_url_path(self, dashboard_manager, mock_hass):
+    async def test_create_dashboard_missing_url_path(self, dashboard_manager, hass):
         """Test that create_dashboard fails without url_path."""
         config = {
             "title": "New Dashboard",
@@ -237,7 +260,7 @@ class TestCreateDashboard:
         assert "url" in result["error"].lower() or "path" in result["error"].lower()
 
     @pytest.mark.asyncio
-    async def test_create_dashboard_sanitizes_url_path(self, dashboard_manager, mock_hass):
+    async def test_create_dashboard_sanitizes_url_path(self, dashboard_manager, hass):
         """Test that create_dashboard sanitizes URL path."""
         config = {
             "title": "New Dashboard",
@@ -252,7 +275,7 @@ class TestCreateDashboard:
             assert result.get("url_path") == "new-dashboard-with-spaces"
 
     @pytest.mark.asyncio
-    async def test_create_dashboard_writes_yaml_file(self, dashboard_manager, mock_hass):
+    async def test_create_dashboard_writes_yaml_file(self, dashboard_manager, hass):
         """Test that create_dashboard writes YAML file."""
         config = {
             "title": "Test Dashboard",
@@ -279,7 +302,7 @@ class TestUpdateDashboard:
     """Tests for update_dashboard method."""
 
     @pytest.mark.asyncio
-    async def test_update_dashboard_success(self, dashboard_manager, mock_hass):
+    async def test_update_dashboard_success(self, dashboard_manager, hass):
         """Test updating an existing dashboard."""
         config = {
             "title": "Updated Dashboard",
@@ -293,7 +316,7 @@ class TestUpdateDashboard:
         assert result.get("success") is True
 
     @pytest.mark.asyncio
-    async def test_update_dashboard_not_found(self, dashboard_manager, mock_hass):
+    async def test_update_dashboard_not_found(self, dashboard_manager, hass):
         """Test updating a non-existent dashboard."""
         config = {
             "title": "Updated Dashboard",
@@ -305,7 +328,7 @@ class TestUpdateDashboard:
         assert "error" in result
 
     @pytest.mark.asyncio
-    async def test_update_dashboard_preserves_structure(self, dashboard_manager, mock_hass):
+    async def test_update_dashboard_preserves_structure(self, dashboard_manager, hass):
         """Test that update_dashboard preserves dashboard structure."""
         config = {
             "title": "Updated Dashboard",
@@ -411,11 +434,11 @@ class TestValidateDashboardConfig:
 class TestDashboardManagerInitialization:
     """Tests for DashboardManager initialization."""
 
-    def test_init_stores_hass(self, mock_hass):
+    def test_init_stores_hass(self, hass):
         """Test that DashboardManager stores hass reference."""
-        manager = DashboardManager(mock_hass)
+        manager = DashboardManager(hass)
 
-        assert manager.hass is mock_hass
+        assert manager.hass is hass
 
     def test_init_with_none_hass_raises(self):
         """Test that DashboardManager raises error with None hass."""
