@@ -1233,7 +1233,10 @@ class AiAgentHaPanel extends LitElement {
             providers.length > 0
           ) {
             this._selectedProvider = providers[0].value;
-            // Fetch models for the initially selected provider
+          }
+
+          // Always fetch models for the selected provider
+          if (this._selectedProvider) {
             this._fetchAvailableModels(this._selectedProvider);
           }
         } else {
@@ -1506,23 +1509,28 @@ class AiAgentHaPanel extends LitElement {
   }
 
   async _selectProvider(provider) {
+    console.log("[AI Agent] Provider selected:", provider);
     this._selectedProvider = provider;
     await this._fetchAvailableModels(provider);
     this.requestUpdate();
   }
 
   async _fetchAvailableModels(provider) {
+    console.log("[AI Agent] Fetching models for provider:", provider);
     try {
       const result = await this.hass.callWS({
         type: "ai_agent_ha/models/list",
         provider: provider
       });
+      console.log("[AI Agent] Models response:", result);
       this._availableModels = result.models || [];
       // Select default model or first available
       const defaultModel = this._availableModels.find(m => m.default);
       this._selectedModel = defaultModel ? defaultModel.id : (this._availableModels[0]?.id || null);
+      console.log("[AI Agent] Available models:", this._availableModels.length, "Selected:", this._selectedModel);
+      this.requestUpdate();
     } catch (e) {
-      console.warn("Could not fetch available models:", e);
+      console.warn("[AI Agent] Could not fetch available models:", e);
       this._availableModels = [];
       this._selectedModel = null;
     }

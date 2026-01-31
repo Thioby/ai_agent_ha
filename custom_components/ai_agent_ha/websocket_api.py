@@ -393,35 +393,66 @@ async def ws_get_available_models(
     provider = msg.get("provider", "gemini_oauth")
 
     # Model definitions with descriptions
+    # Gemini OAuth (Cloud Code API) - uses preview models
+    gemini_oauth_models = [
+        {
+            "id": "gemini-3-pro-preview",
+            "name": "Gemini 3 Pro",
+            "description": "Highest quality, best for complex tasks",
+            "default": True,
+        },
+        {
+            "id": "gemini-3-flash",
+            "name": "Gemini 3 Flash",
+            "description": "Fast responses, good quality",
+            "default": False,
+        },
+        {
+            "id": "gemini-2.5-pro",
+            "name": "Gemini 2.5 Pro",
+            "description": "Previous generation pro",
+            "default": False,
+        },
+        {
+            "id": "gemini-2.5-flash",
+            "name": "Gemini 2.5 Flash",
+            "description": "Fastest, 90% of pro quality",
+            "default": False,
+        },
+    ]
+    # Gemini API key - uses standard public models
+    gemini_api_models = [
+        {
+            "id": "gemini-2.5-flash",
+            "name": "Gemini 2.5 Flash",
+            "description": "Fast, good quality (default)",
+            "default": True,
+        },
+        {
+            "id": "gemini-2.5-pro",
+            "name": "Gemini 2.5 Pro",
+            "description": "Higher quality, slower",
+            "default": False,
+        },
+        {
+            "id": "gemini-1.5-flash",
+            "name": "Gemini 1.5 Flash",
+            "description": "Previous generation fast",
+            "default": False,
+        },
+        {
+            "id": "gemini-1.5-pro",
+            "name": "Gemini 1.5 Pro",
+            "description": "Previous generation pro",
+            "default": False,
+        },
+    ]
     models_by_provider = {
-        "gemini_oauth": [
-            {
-                "id": "gemini-3-pro-preview",
-                "name": "Gemini 3 Pro",
-                "description": "Highest quality, best for complex tasks",
-                "default": True,
-            },
-            {
-                "id": "gemini-3-flash",
-                "name": "Gemini 3 Flash",
-                "description": "Fast responses, good quality",
-                "default": False,
-            },
-            {
-                "id": "gemini-2.5-pro",
-                "name": "Gemini 2.5 Pro",
-                "description": "Previous generation, stable",
-                "default": False,
-            },
-            {
-                "id": "gemini-2.5-flash",
-                "name": "Gemini 2.5 Flash",
-                "description": "Fastest, 90% of pro quality",
-                "default": False,
-            },
-        ],
+        "gemini": gemini_api_models,
+        "gemini_oauth": gemini_oauth_models,
         # Other providers can be added here
         "anthropic": [],
+        "anthropic_oauth": [],
         "openai": [],
     }
 

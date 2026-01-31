@@ -12,6 +12,14 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# Available Gemini models for API key authentication
+GEMINI_AVAILABLE_MODELS = [
+    "gemini-2.5-flash",      # Default, fast
+    "gemini-2.5-pro",        # Higher quality
+    "gemini-1.5-flash",      # Previous generation fast
+    "gemini-1.5-pro",        # Previous generation pro
+]
+
 
 @ProviderRegistry.register("gemini")
 class GeminiProvider(BaseHTTPClient):
@@ -231,3 +239,82 @@ class GeminiProvider(BaseHTTPClient):
             return ""
 
         return ""
+
+    def _get_api_url(self, model: str | None = None) -> str:
+        """Get API URL with optional model override.
+
+        Args:
+            model: Optional model to use instead of configured default.
+
+        Returns:
+            The full URL for the Gemini generateContent endpoint.
+        """
+        effective_model = model or self._model
+        if effective_model not in GEMINI_AVAILABLE_MODELS:
+            _LOGGER.warning(
+                "Model '%s' not in available models, using default '%s'",
+                effective_model,
+                self.DEFAULT_MODEL,
+            )
+            effective_model = self.DEFAULT_MODEL
+        return self.API_URL_TEMPLATE.format(model=effective_model)
+
+    async def get_response(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
+        """Get a response from Gemini with optional model override.
+
+        Args:
+            messages: List of message dictionaries with role and content.
+            **kwargs: Additional arguments including optional 'model' override.
+
+        Returns:
+            The AI response as a string.
+        """
+        import asyncio
+
+        # Allow per-request model override
+        model = kwargs.pop("model", None)
+        api_url = self._get_api_url(model)
+
+        _LOGGER.debug("Gemini API request to model: %s", model or self._model)
+
+        headers = self._build_headers()
+        payload = self._build_payload(messages, **kwargs)
+
+        last_error: Exception | None = None
+
+        for attempt in range(self._max_retries):
+            try:
+                async with self.session.post(
+                    api_url,
+                    headers=headers,
+                    json=payload,
+                ) as response:
+                    if response.status == 200:
+                        response_data = await response.json()
+                        return self._extract_response(response_data)
+
+                    error_text = await response.text()
+                    _LOGGER.warning(
+                        "Gemini API request failed (attempt %d/%d): status=%d, body=%s",
+                        attempt + 1,
+                        self._max_retries,
+                        response.status,
+                        error_text[:500],
+                    )
+                    last_error = Exception(
+                        f"Gemini API request failed with status {response.status}"
+                    )
+
+            except Exception as e:
+                _LOGGER.warning(
+                    "Gemini API request exception (attempt %d/%d): %s",
+                    attempt + 1,
+                    self._max_retries,
+                    str(e),
+                )
+                last_error = e
+
+            if attempt < self._max_retries - 1:
+                await asyncio.sleep(self._retry_delay)
+
+        raise last_error or Exception("Gemini API request failed after all retries")
