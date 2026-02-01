@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import uuid
 from dataclasses import asdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
@@ -15,6 +17,37 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN, VALID_PROVIDERS
 from .storage import MAX_MESSAGE_LENGTH, Message, SessionStorage
+
+# Path to models configuration file
+MODELS_CONFIG_PATH = Path(__file__).parent / "models_config.json"
+_models_cache: dict | None = None
+
+
+def load_models_config() -> dict:
+    """Load models configuration from JSON file."""
+    global _models_cache
+    if _models_cache is not None:
+        return _models_cache
+
+    try:
+        with open(MODELS_CONFIG_PATH, encoding="utf-8") as f:
+            _models_cache = json.load(f)
+            return _models_cache
+    except (FileNotFoundError, json.JSONDecodeError) as err:
+        _LOGGER.warning("Could not load models config: %s", err)
+        return {}
+
+
+def get_models_for_provider(provider: str) -> list[dict]:
+    """Get available models for a specific provider.
+
+    Note: This is a sync function. When calling from async context,
+    use hass.async_add_executor_job() to avoid blocking the event loop.
+    """
+    config = load_models_config()
+    provider_config = config.get(provider, {})
+    return provider_config.get("models", [])
+
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -388,75 +421,12 @@ async def ws_get_available_models(
     """Get available models for a provider.
 
     Returns a list of available models with their descriptions.
-    Currently only gemini_oauth supports model selection.
+    Models are loaded from models_config.json for easy editing.
     """
     provider = msg.get("provider", "gemini_oauth")
+    # Run file I/O in executor to avoid blocking event loop
+    models = await hass.async_add_executor_job(get_models_for_provider, provider)
 
-    # Model definitions with descriptions
-    # Gemini OAuth (Cloud Code API) - uses preview models
-    gemini_oauth_models = [
-        {
-            "id": "gemini-3-pro-preview",
-            "name": "Gemini 3 Pro",
-            "description": "Highest quality, best for complex tasks",
-            "default": True,
-        },
-        {
-            "id": "gemini-3-flash",
-            "name": "Gemini 3 Flash",
-            "description": "Fast responses, good quality",
-            "default": False,
-        },
-        {
-            "id": "gemini-2.5-pro",
-            "name": "Gemini 2.5 Pro",
-            "description": "Previous generation pro",
-            "default": False,
-        },
-        {
-            "id": "gemini-2.5-flash",
-            "name": "Gemini 2.5 Flash",
-            "description": "Fastest, 90% of pro quality",
-            "default": False,
-        },
-    ]
-    # Gemini API key - uses standard public models
-    gemini_api_models = [
-        {
-            "id": "gemini-2.5-flash",
-            "name": "Gemini 2.5 Flash",
-            "description": "Fast, good quality (default)",
-            "default": True,
-        },
-        {
-            "id": "gemini-2.5-pro",
-            "name": "Gemini 2.5 Pro",
-            "description": "Higher quality, slower",
-            "default": False,
-        },
-        {
-            "id": "gemini-1.5-flash",
-            "name": "Gemini 1.5 Flash",
-            "description": "Previous generation fast",
-            "default": False,
-        },
-        {
-            "id": "gemini-1.5-pro",
-            "name": "Gemini 1.5 Pro",
-            "description": "Previous generation pro",
-            "default": False,
-        },
-    ]
-    models_by_provider = {
-        "gemini": gemini_api_models,
-        "gemini_oauth": gemini_oauth_models,
-        # Other providers can be added here
-        "anthropic": [],
-        "anthropic_oauth": [],
-        "openai": [],
-    }
-
-    models = models_by_provider.get(provider, [])
     connection.send_result(
         msg["id"],
         {

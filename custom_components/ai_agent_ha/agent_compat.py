@@ -1,4 +1,5 @@
 """Compatibility layer for migration from old AiAgentHaAgent to new Agent."""
+
 from __future__ import annotations
 
 import logging
@@ -41,7 +42,10 @@ class AiAgentHaAgent:
         # RAG manager (set externally)
         self._rag_manager = None
 
-        _LOGGER.info("AiAgentHaAgent initialized with new architecture (provider: %s)", self._provider_name)
+        _LOGGER.info(
+            "AiAgentHaAgent initialized with new architecture (provider: %s)",
+            self._provider_name,
+        )
 
     def _setup_provider(self) -> None:
         """Create AI provider from config."""
@@ -50,18 +54,14 @@ class AiAgentHaAgent:
 
         try:
             self._provider = ProviderRegistry.create(
-                self._provider_name,
-                self.hass,
-                provider_config
+                self._provider_name, self.hass, provider_config
             )
         except ValueError:
             # Fallback for OAuth providers or unknown providers
             # They map to base providers
             base_provider = self._get_base_provider_name()
             self._provider = ProviderRegistry.create(
-                base_provider,
-                self.hass,
-                provider_config
+                base_provider, self.hass, provider_config
             )
 
     def _get_base_provider_name(self) -> str:
@@ -104,7 +104,9 @@ class AiAgentHaAgent:
         # For OAuth providers, try provider name first (e.g., gemini_oauth),
         # then fall back to base provider (e.g., gemini)
         if is_oauth_provider:
-            model = models.get(provider, models.get(base_provider, self._get_default_model(provider)))
+            model = models.get(
+                provider, models.get(base_provider, self._get_default_model(provider))
+            )
         else:
             model = models.get(provider, self._get_default_model(provider))
 
@@ -189,6 +191,7 @@ class AiAgentHaAgent:
         self,
         user_query: str,
         provider: str | None = None,
+        model: str | None = None,
         debug: bool = False,
         conversation_history: list[dict] | None = None,
     ) -> dict[str, Any]:
@@ -202,14 +205,15 @@ class AiAgentHaAgent:
             self._agent._conversation.clear()
             for msg in conversation_history:
                 self._agent._conversation.add_message(
-                    msg.get("role", "user"),
-                    msg.get("content", "")
+                    msg.get("role", "user"), msg.get("content", "")
                 )
 
         # Build kwargs
         kwargs = {"hass": self.hass}  # Pass hass for tool execution
         if debug:
             kwargs["debug"] = debug
+        if model:
+            kwargs["model"] = model
 
         # Add tools for native function calling
         tools = self._get_tools_for_provider()
@@ -269,6 +273,7 @@ class AiAgentHaAgent:
         # This is a storage operation - delegate to storage module
         try:
             from .storage import save_prompt_history
+
             await save_prompt_history(self.hass, user_id, history)
             return {"success": True}
         except Exception as e:
@@ -278,6 +283,7 @@ class AiAgentHaAgent:
         """Load user prompt history."""
         try:
             from .storage import load_prompt_history
+
             history = await load_prompt_history(self.hass, user_id)
             return {"success": True, "history": history}
         except Exception as e:
@@ -297,11 +303,11 @@ class AiAgentHaAgent:
             # RAGManager.get_relevant_context returns compressed context string
             context = await self._rag_manager.get_relevant_context(query)
             if context:
-                _LOGGER.info(
-                    "RAG found relevant context (%d chars)",
-                    len(context)
+                _LOGGER.info("RAG found relevant context (%d chars)", len(context))
+                _LOGGER.debug(
+                    "RAG context preview: %s",
+                    context[:300] if len(context) > 300 else context,
                 )
-                _LOGGER.debug("RAG context preview: %s", context[:300] if len(context) > 300 else context)
                 return context
             else:
                 _LOGGER.debug("RAG returned no results for query")

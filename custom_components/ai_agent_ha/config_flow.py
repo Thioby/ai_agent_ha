@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -27,6 +29,36 @@ from .const import (
 )
 from .oauth import generate_pkce, build_auth_url, exchange_code
 from . import gemini_oauth
+
+# Path to models configuration
+MODELS_CONFIG_PATH = Path(__file__).parent / "models_config.json"
+
+
+def get_model_options(provider: str) -> list[str]:
+    """Get model IDs for a provider from models_config.json."""
+    try:
+        with open(MODELS_CONFIG_PATH, encoding="utf-8") as f:
+            config = json.load(f)
+        provider_config = config.get(provider, {})
+        models = provider_config.get("models", [])
+        return [m["id"] for m in models]
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return []
+
+
+def get_default_model(provider: str) -> str | None:
+    """Get default model for a provider."""
+    try:
+        with open(MODELS_CONFIG_PATH, encoding="utf-8") as f:
+            config = json.load(f)
+        provider_config = config.get(provider, {})
+        models = provider_config.get("models", [])
+        for m in models:
+            if m.get("default"):
+                return m["id"]
+        return models[0]["id"] if models else None
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, IndexError):
+        return None
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -467,21 +499,15 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
                 self._gemini_pkce_challenge, self._gemini_pkce_verifier
             )
 
-        # Available models for Gemini OAuth
-        gemini_oauth_models = [
-            "gemini-3-pro-preview",
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-2.0-flash",
-            "gemini-2.5-flash-preview",
-            "gemini-2.5-pro-preview",
-        ]
+        # Available models for Gemini OAuth (from models_config.json)
+        gemini_oauth_models = get_model_options("gemini_oauth")
+        default_model = get_default_model("gemini_oauth") or "gemini-3-pro-preview"
 
         errors = {}
 
         if user_input is not None:
             code_input = user_input.get("code", "").strip()
-            selected_model = user_input.get("model", "gemini-3-pro-preview")
+            selected_model = user_input.get("model", default_model)
             if code_input:
                 # Extract code from full callback URL or use as-is
                 code = self._extract_oauth_code(code_input)
@@ -521,7 +547,7 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        "model", default="gemini-3-pro-preview"
+                        "model", default=default_model
                     ): SelectSelector(
                         SelectSelectorConfig(options=gemini_oauth_models)
                     ),

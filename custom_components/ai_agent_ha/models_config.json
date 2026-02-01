@@ -1,0 +1,131 @@
+{
+  "gemini_oauth": {
+    "description": "Google Gemini via OAuth (Cloud Code Assist API)",
+    "models": [
+      {
+        "id": "gemini-3-pro-preview",
+        "name": "Gemini 3 Pro Preview",
+        "description": "Best multimodal understanding, advanced reasoning",
+        "default": true
+      },
+      {
+        "id": "gemini-3-flash-preview",
+        "name": "Gemini 3 Flash Preview",
+        "description": "Balanced speed, scale and frontier intelligence"
+      },
+      {
+        "id": "gemini-3-flash",
+        "name": "Gemini 3 Flash",
+        "description": "Lightning-fast and highly capable"
+      },
+      {
+        "id": "gemini-2.5-pro",
+        "name": "Gemini 2.5 Pro",
+        "description": "Complex reasoning and thinking model"
+      },
+      {
+        "id": "gemini-2.5-flash",
+        "name": "Gemini 2.5 Flash",
+        "description": "High volume tasks, good price-performance"
+      },
+      {
+        "id": "gemini-2.5-flash-lite",
+        "name": "Gemini 2.5 Flash Lite",
+        "description": "Fastest, optimized for cost-efficiency"
+      }
+    ]
+  },
+  "gemini": {
+    "description": "Google Gemini via API Key",
+    "models": [
+      {
+        "id": "gemini-2.5-flash",
+        "name": "Gemini 2.5 Flash",
+        "description": "Fast, good quality, recommended",
+        "default": true
+      },
+      {
+        "id": "gemini-2.5-pro",
+        "name": "Gemini 2.5 Pro",
+        "description": "Higher quality, complex reasoning"
+      },
+      {
+        "id": "gemini-2.5-flash-lite",
+        "name": "Gemini 2.5 Flash Lite",
+        "description": "Fastest, cost-efficient"
+      },
+      {
+        "id": "gemini-2.0-flash",
+        "name": "Gemini 2.0 Flash",
+        "description": "Legacy model (deprecated March 2026)"
+      }
+    ]
+  },
+  "anthropic": {
+    "description": "Anthropic Claude via API Key",
+    "models": [
+      {
+        "id": "claude-sonnet-4-20250514",
+        "name": "Claude Sonnet 4",
+        "description": "Best balance of speed and intelligence",
+        "default": true
+      },
+      {
+        "id": "claude-opus-4-20250514",
+        "name": "Claude Opus 4",
+        "description": "Most capable, complex tasks"
+      },
+      {
+        "id": "claude-3-5-haiku-20241022",
+        "name": "Claude 3.5 Haiku",
+        "description": "Fastest, everyday tasks"
+      }
+    ]
+  },
+  "anthropic_oauth": {
+    "description": "Claude Pro/Max via OAuth",
+    "models": [
+      {
+        "id": "claude-sonnet-4-20250514",
+        "name": "Claude Sonnet 4",
+        "description": "Best balance of speed and intelligence",
+        "default": true
+      },
+      {
+        "id": "claude-opus-4-20250514",
+        "name": "Claude Opus 4",
+        "description": "Most capable, complex tasks"
+      }
+    ]
+  },
+  "openai": {
+    "description": "OpenAI via API Key",
+    "models": [
+      {
+        "id": "gpt-4o",
+        "name": "GPT-4o",
+        "description": "Most capable, multimodal",
+        "default": true
+      },
+      {
+        "id": "gpt-4o-mini",
+        "name": "GPT-4o Mini",
+        "description": "Fast and affordable"
+      },
+      {
+        "id": "o1",
+        "name": "o1",
+        "description": "Advanced reasoning"
+      },
+      {
+        "id": "o3-mini",
+        "name": "o3-mini",
+        "description": "Fast reasoning model"
+      }
+    ]
+  },
+  "openrouter": {
+    "description": "OpenRouter - multiple providers",
+    "models": []
+  }
+}

@@ -1517,12 +1517,14 @@ class AiAgentHaPanel extends LitElement {
 
   async _fetchAvailableModels(provider) {
     console.log("[AI Agent] Fetching models for provider:", provider);
+    console.log("[AI Agent] Request payload:", { type: "ai_agent_ha/models/list", provider: provider });
     try {
       const result = await this.hass.callWS({
         type: "ai_agent_ha/models/list",
         provider: provider
       });
       console.log("[AI Agent] Models response:", result);
+      console.log("[AI Agent] Models list:", result.models);
       this._availableModels = result.models || [];
       // Select default model or first available
       const defaultModel = this._availableModels.find(m => m.default);
@@ -1883,7 +1885,9 @@ class AiAgentHaPanel extends LitElement {
     if (!entry) return null;
 
     const providerFromData = entry.data?.ai_provider || entry.options?.ai_provider;
+    console.log("[AI Agent] Resolving provider from entry:", entry.title, "ai_provider:", providerFromData);
     if (providerFromData && PROVIDERS[providerFromData]) {
+      console.log("[AI Agent] Resolved provider:", providerFromData);
       return providerFromData;
     }
 

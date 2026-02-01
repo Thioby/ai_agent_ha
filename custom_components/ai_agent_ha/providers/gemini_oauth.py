@@ -7,6 +7,7 @@ import logging
 import random
 import re
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -34,13 +35,25 @@ GEMINI_CODE_ASSIST_METADATA = {
     "pluginType": "GEMINI",
 }
 
-# Available Gemini models for Cloud Code Assist API
-GEMINI_AVAILABLE_MODELS = [
-    "gemini-3-pro-preview",  # Default, highest quality
-    "gemini-3-flash",        # Fast, good quality
-    "gemini-2.5-pro",        # Previous generation pro
-    "gemini-2.5-flash",      # Fast, 90% of pro quality
-]
+# Load models from config file
+MODELS_CONFIG_PATH = Path(__file__).parent.parent / "models_config.json"
+
+
+def _load_gemini_oauth_models() -> tuple[list[str], str]:
+    """Load available models and default from config file."""
+    try:
+        with open(MODELS_CONFIG_PATH, encoding="utf-8") as f:
+            config = json.load(f)
+        provider_config = config.get("gemini_oauth", {})
+        models = provider_config.get("models", [])
+        model_ids = [m["id"] for m in models]
+        default = next((m["id"] for m in models if m.get("default")), None)
+        return model_ids, default or (model_ids[0] if model_ids else "gemini-3-pro-preview")
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, StopIteration):
+        return ["gemini-3-pro-preview"], "gemini-3-pro-preview"
+
+
+GEMINI_AVAILABLE_MODELS, _DEFAULT_MODEL = _load_gemini_oauth_models()
 
 
 @ProviderRegistry.register("gemini_oauth")
@@ -56,7 +69,7 @@ class GeminiOAuthProvider(AIProvider):
     MAX_ATTEMPTS = 10
     INITIAL_DELAY_MS = 5000
     MAX_DELAY_MS = 30000
-    DEFAULT_MODEL = "gemini-3-pro-preview"
+    DEFAULT_MODEL = _DEFAULT_MODEL
 
     def __init__(self, hass: HomeAssistant, config: dict[str, Any]) -> None:
         """Initialize the Gemini OAuth provider.
