@@ -1440,11 +1440,8 @@ class AiAgentHaPanel extends LitElement {
                   `)}
                 </select>
               </div>
-              ${(() => {
-                console.log("[AI Agent] Render check - availableModels.length:", this._availableModels.length);
-                console.log("[AI Agent] Render check - availableModels:", this._availableModels);
-                return this._availableModels.length > 0 ? html`
-              <div class="provider-selector">
+              ${this._availableModels.length > 0 ? html`
+              <div class="provider-selector" .key=${`models-${this._selectedProvider}-${this._availableModels.length}`}>
                 <span class="provider-label">Model:</span>
                 <select
                   class="provider-button"
@@ -1461,8 +1458,7 @@ class AiAgentHaPanel extends LitElement {
                   `)}
                 </select>
               </div>
-              ` : '';
-              })()}
+              ` : ''}
               <label class="thinking-toggle">
                 <input
                   type="checkbox"
@@ -1515,23 +1511,15 @@ class AiAgentHaPanel extends LitElement {
   async _selectProvider(provider) {
     console.log("[AI Agent] Provider selected:", provider);
     this._selectedProvider = provider;
-    console.log("[AI Agent] Before fetch - availableModels count:", this._availableModels.length);
     await this._fetchAvailableModels(provider);
-    console.log("[AI Agent] After fetch - availableModels count:", this._availableModels.length);
-    console.log("[AI Agent] After fetch - availableModels:", this._availableModels);
   }
 
   async _fetchAvailableModels(provider) {
-    console.log("[AI Agent] Fetching models for provider:", provider);
-    console.log("[AI Agent] Request payload:", { type: "ai_agent_ha/models/list", provider: provider });
-    
     try {
       const result = await this.hass.callWS({
         type: "ai_agent_ha/models/list",
         provider: provider
       });
-      console.log("[AI Agent] Models response:", result);
-      console.log("[AI Agent] Models list:", result.models);
       
       // Create new array reference to trigger reactivity
       this._availableModels = [...(result.models || [])];
@@ -1539,7 +1527,6 @@ class AiAgentHaPanel extends LitElement {
       // Select default model or first available
       const defaultModel = this._availableModels.find(m => m.default);
       this._selectedModel = defaultModel ? defaultModel.id : (this._availableModels[0]?.id || null);
-      console.log("[AI Agent] Available models:", this._availableModels.length, "Selected:", this._selectedModel);
       this.requestUpdate();
     } catch (e) {
       console.warn("[AI Agent] Could not fetch available models:", e);
