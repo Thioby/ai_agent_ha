@@ -1511,13 +1511,28 @@ class AiAgentHaPanel extends LitElement {
   async _selectProvider(provider) {
     console.log("[AI Agent] Provider selected:", provider);
     this._selectedProvider = provider;
-    await this._fetchAvailableModels(provider);
+    
+    // Clear models immediately to hide old dropdown
+    this._availableModels = [];
+    this._selectedModel = null;
     this.requestUpdate();
+    
+    console.log("[AI Agent] Before fetch - availableModels count:", this._availableModels.length);
+    await this._fetchAvailableModels(provider);
+    console.log("[AI Agent] After fetch - availableModels count:", this._availableModels.length);
+    console.log("[AI Agent] After fetch - availableModels:", this._availableModels);
+    console.log("[AI Agent] requestUpdate() called");
   }
 
   async _fetchAvailableModels(provider) {
     console.log("[AI Agent] Fetching models for provider:", provider);
     console.log("[AI Agent] Request payload:", { type: "ai_agent_ha/models/list", provider: provider });
+    
+    // Clear models first to force re-render
+    this._availableModels = [];
+    this._selectedModel = null;
+    this.requestUpdate();
+    
     try {
       const result = await this.hass.callWS({
         type: "ai_agent_ha/models/list",
@@ -1525,7 +1540,10 @@ class AiAgentHaPanel extends LitElement {
       });
       console.log("[AI Agent] Models response:", result);
       console.log("[AI Agent] Models list:", result.models);
-      this._availableModels = result.models || [];
+      
+      // Create new array reference to trigger reactivity
+      this._availableModels = [...(result.models || [])];
+      
       // Select default model or first available
       const defaultModel = this._availableModels.find(m => m.default);
       this._selectedModel = defaultModel ? defaultModel.id : (this._availableModels[0]?.id || null);
@@ -1535,6 +1553,7 @@ class AiAgentHaPanel extends LitElement {
       console.warn("[AI Agent] Could not fetch available models:", e);
       this._availableModels = [];
       this._selectedModel = null;
+      this.requestUpdate();
     }
   }
 
