@@ -1440,7 +1440,10 @@ class AiAgentHaPanel extends LitElement {
                   `)}
                 </select>
               </div>
-              ${this._availableModels.length > 0 ? html`
+              ${(() => {
+                console.log("[AI Agent] Render check - availableModels.length:", this._availableModels.length);
+                console.log("[AI Agent] Render check - availableModels:", this._availableModels);
+                return this._availableModels.length > 0 ? html`
               <div class="provider-selector">
                 <span class="provider-label">Model:</span>
                 <select
@@ -1458,7 +1461,8 @@ class AiAgentHaPanel extends LitElement {
                   `)}
                 </select>
               </div>
-              ` : ''}
+              ` : '';
+              })()}
               <label class="thinking-toggle">
                 <input
                   type="checkbox"
@@ -1511,27 +1515,15 @@ class AiAgentHaPanel extends LitElement {
   async _selectProvider(provider) {
     console.log("[AI Agent] Provider selected:", provider);
     this._selectedProvider = provider;
-    
-    // Clear models immediately to hide old dropdown
-    this._availableModels = [];
-    this._selectedModel = null;
-    this.requestUpdate();
-    
     console.log("[AI Agent] Before fetch - availableModels count:", this._availableModels.length);
     await this._fetchAvailableModels(provider);
     console.log("[AI Agent] After fetch - availableModels count:", this._availableModels.length);
     console.log("[AI Agent] After fetch - availableModels:", this._availableModels);
-    console.log("[AI Agent] requestUpdate() called");
   }
 
   async _fetchAvailableModels(provider) {
     console.log("[AI Agent] Fetching models for provider:", provider);
     console.log("[AI Agent] Request payload:", { type: "ai_agent_ha/models/list", provider: provider });
-    
-    // Clear models first to force re-render
-    this._availableModels = [];
-    this._selectedModel = null;
-    this.requestUpdate();
     
     try {
       const result = await this.hass.callWS({
