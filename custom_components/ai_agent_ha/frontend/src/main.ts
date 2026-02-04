@@ -75,14 +75,18 @@ class AiAgentHAPanel extends HTMLElement {
 
     try {
       console.log('[AiAgentHAPanel] Mounting Svelte app...');
+      console.log('[AiAgentHAPanel] Props:', {
+        hass: !!this._hass,
+        narrow: this._narrow,
+        panel: this._panel
+      });
       
+      // Svelte 5: props are passed directly in the config, not nested under 'props'
       this.svelteApp = new (AiAgentPanel as any)({
         target: this.mountPoint!,
-        props: {
-          hass: this._hass,
-          narrow: this._narrow,
-          panel: this._panel,
-        },
+        hass: this._hass,
+        narrow: this._narrow,
+        panel: this._panel,
       });
 
       console.log('[AiAgentHAPanel] Svelte app mounted successfully');
