@@ -21,7 +21,7 @@ export default defineConfig({
       entry: './src/main.ts',
       name: 'AiAgentHaPanel',
       fileName: () => 'ai_agent_ha-panel.js',
-      formats: ['iife']
+      formats: ['es'] // ✓ ES module format for Home Assistant
     },
     outDir: './',
     emptyOutDir: false,
@@ -40,7 +40,7 @@ export default defineConfig({
     },
     terserOptions: {
       compress: {
-        drop_console: true,
+        drop_console: false, // ✓ Keep console.log for debugging
         drop_debugger: true
       }
     }
