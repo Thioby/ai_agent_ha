@@ -1,29 +1,30 @@
 <script lang="ts">
   import { providerState, hasProviders } from "$lib/stores/providers"
-import { get } from 'svelte/store';
+  import { get } from 'svelte/store';
   import { appState } from "$lib/stores/appState"
   import { fetchModels } from '$lib/services/provider.service';
 
   async function handleChange(e: Event) {
     const target = e.target as HTMLSelectElement;
-    providerState.selectedProvider = target.value;
+    providerState.update(s => ({ ...s, selectedProvider: target.value }));
     
     // Fetch models for new provider
-    if (appState.hass && target.value) {
-      await fetchModels(appState.hass, target.value);
+    const currentAppState = get(appState);
+    if (currentAppState.hass && target.value) {
+      await fetchModels(currentAppState.hass, target.value);
     }
   }
 </script>
 
-{#if hasProviders}
+{#if $hasProviders}
   <div class="provider-selector">
     <span class="provider-label">Provider:</span>
     <select
       class="provider-button"
-      value={providerState.selectedProvider || ''}
+      value={$providerState.selectedProvider || ''}
       onchange={handleChange}
     >
-      {#each providerState.availableProviders as provider}
+      {#each $providerState.availableProviders as provider}
         <option value={provider.value}>
           {provider.label}
         </option>

@@ -4829,18 +4829,6 @@ function observe_all(context, props) {
   }
   props();
 }
-function reactive_import(fn) {
-  var s2 = source(0);
-  return function() {
-    if (arguments.length === 1) {
-      set(s2, get$1(s2) + 1);
-      return arguments[0];
-    } else {
-      get$1(s2);
-      return fn();
-    }
-  };
-}
 function subscribe_to_store(store, run2, invalidate) {
   if (store == null) {
     run2(void 0);
@@ -11669,17 +11657,20 @@ function MessageInput($$anchor, $$props) {
   return $$pop;
 }
 delegate(["input", "keydown"]);
-var $$_import_providerState$1 = reactive_import(() => providerState);
 var root_2$2 = /* @__PURE__ */ from_html(`<option> </option>`);
 var root_1$2 = /* @__PURE__ */ from_html(`<div class="provider-selector svelte-6zrmqv"><span class="provider-label svelte-6zrmqv">Provider:</span> <select class="provider-button svelte-6zrmqv"></select></div>`);
 var root_3$1 = /* @__PURE__ */ from_html(`<div class="no-providers svelte-6zrmqv">No providers configured</div>`);
 function ProviderSelector($$anchor, $$props) {
   push($$props, false);
+  const $hasProviders = () => store_get(hasProviders, "$hasProviders", $$stores);
+  const $providerState = () => store_get(providerState, "$providerState", $$stores);
+  const [$$stores, $$cleanup] = setup_stores();
   async function handleChange(e2) {
     const target = e2.target;
-    $$_import_providerState$1($$_import_providerState$1().selectedProvider = target.value);
-    if (appState.hass && target.value) {
-      await fetchModels(appState.hass, target.value);
+    providerState.update((s2) => ({ ...s2, selectedProvider: target.value }));
+    const currentAppState = get(appState);
+    if (currentAppState.hass && target.value) {
+      await fetchModels(currentAppState.hass, target.value);
     }
   }
   init();
@@ -11690,7 +11681,7 @@ function ProviderSelector($$anchor, $$props) {
       var div = root_1$2();
       var select = sibling(child(div), 2);
       select.__change = handleChange;
-      each(select, 5, () => $$_import_providerState$1().availableProviders, index, ($$anchor3, provider) => {
+      each(select, 5, () => $providerState().availableProviders, index, ($$anchor3, provider) => {
         var option = root_2$2();
         var text2 = child(option);
         var option_value = {};
@@ -11705,8 +11696,8 @@ function ProviderSelector($$anchor, $$props) {
       var select_value;
       init_select(select);
       template_effect(() => {
-        if (select_value !== (select_value = $$_import_providerState$1().selectedProvider || "")) {
-          select.value = (select.__value = $$_import_providerState$1().selectedProvider || "") ?? "", select_option(select, $$_import_providerState$1().selectedProvider || "");
+        if (select_value !== (select_value = $providerState().selectedProvider || "")) {
+          select.value = (select.__value = $providerState().selectedProvider || "") ?? "", select_option(select, $providerState().selectedProvider || "");
         }
       });
       append($$anchor2, div);
@@ -11716,22 +11707,25 @@ function ProviderSelector($$anchor, $$props) {
       append($$anchor2, div_1);
     };
     if_block(node, ($$render) => {
-      if (hasProviders) $$render(consequent);
+      if ($hasProviders()) $$render(consequent);
       else $$render(alternate, false);
     });
   }
   append($$anchor, fragment);
   pop();
+  $$cleanup();
 }
 delegate(["change"]);
-var $$_import_providerState = reactive_import(() => providerState);
 var root_2$1 = /* @__PURE__ */ from_html(`<option> </option>`);
 var root_1$1 = /* @__PURE__ */ from_html(`<div class="provider-selector svelte-1whqbkb"><span class="provider-label svelte-1whqbkb">Model:</span> <select class="provider-button svelte-1whqbkb"></select></div>`);
 function ModelSelector($$anchor, $$props) {
   push($$props, false);
+  const $hasModels = () => store_get(hasModels, "$hasModels", $$stores);
+  const $providerState = () => store_get(providerState, "$providerState", $$stores);
+  const [$$stores, $$cleanup] = setup_stores();
   function handleChange(e2) {
     const target = e2.target;
-    $$_import_providerState($$_import_providerState().selectedModel = target.value);
+    providerState.update((s2) => ({ ...s2, selectedModel: target.value }));
   }
   init();
   var fragment = comment();
@@ -11741,7 +11735,7 @@ function ModelSelector($$anchor, $$props) {
       var div = root_1$1();
       var select = sibling(child(div), 2);
       select.__change = handleChange;
-      each(select, 5, () => $$_import_providerState().availableModels, index, ($$anchor3, model) => {
+      each(select, 5, () => $providerState().availableModels, index, ($$anchor3, model) => {
         var option = root_2$1();
         var text2 = child(option);
         var option_value = {};
@@ -11756,18 +11750,19 @@ function ModelSelector($$anchor, $$props) {
       var select_value;
       init_select(select);
       template_effect(() => {
-        if (select_value !== (select_value = $$_import_providerState().selectedModel || "")) {
-          select.value = (select.__value = $$_import_providerState().selectedModel || "") ?? "", select_option(select, $$_import_providerState().selectedModel || "");
+        if (select_value !== (select_value = $providerState().selectedModel || "")) {
+          select.value = (select.__value = $providerState().selectedModel || "") ?? "", select_option(select, $providerState().selectedModel || "");
         }
       });
       append($$anchor2, div);
     };
     if_block(node, ($$render) => {
-      if (hasModels) $$render(consequent);
+      if ($hasModels()) $$render(consequent);
     });
   }
   append($$anchor, fragment);
   pop();
+  $$cleanup();
 }
 delegate(["change"]);
 var root$3 = /* @__PURE__ */ from_html(`<button class="send-button svelte-1lpj1oh"><svg viewBox="0 0 24 24" class="icon svelte-1lpj1oh"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg></button>`);

@@ -1,22 +1,21 @@
 <script lang="ts">
   import { providerState, hasModels } from "$lib/stores/providers"
-import { get } from 'svelte/store';
 
   function handleChange(e: Event) {
     const target = e.target as HTMLSelectElement;
-    providerState.selectedModel = target.value;
+    providerState.update(s => ({ ...s, selectedModel: target.value }));
   }
 </script>
 
-{#if hasModels}
+{#if $hasModels}
   <div class="provider-selector">
     <span class="provider-label">Model:</span>
     <select
       class="provider-button"
-      value={providerState.selectedModel || ''}
+      value={$providerState.selectedModel || ''}
       onchange={handleChange}
     >
-      {#each providerState.availableModels as model}
+      {#each $providerState.availableModels as model}
         <option value={model.id}>
           {model.name}
         </option>
