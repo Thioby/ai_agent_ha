@@ -85,7 +85,9 @@ export function renderMarkdown(text: string, sessionId?: string): string {
     // Cache the result (limit cache size per session)
     if (sessionCache.size > 100) {
       const firstKey = sessionCache.keys().next().value;
-      sessionCache.delete(firstKey);
+      if (firstKey) {
+        sessionCache.delete(firstKey);
+      }
     }
 
     sessionCache.set(text, sanitized);

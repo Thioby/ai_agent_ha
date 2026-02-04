@@ -1,4 +1,4 @@
-import type { HomeAssistant, SessionListItem, Message } from '$lib/types';
+import type { HomeAssistant } from '$lib/types';
 import { sessionState } from '$lib/stores/sessions';
 import { appState } from '$lib/stores/appState';
 import { clearSessionCache } from './markdown.service';
@@ -105,7 +105,7 @@ export async function deleteSession(hass: HomeAssistant, sessionId: string): Pro
     });
 
     // Remove from list
-    sessionState.sessions = sessionState.sessions.filter((s) => s.session_id !== sessionId);
+    sessionState.sessions = sessionState.sessions.filter((s: any) => s.session_id !== sessionId);
 
     // Clear markdown cache for this session
     clearSessionCache(sessionId);
@@ -129,7 +129,7 @@ export async function deleteSession(hass: HomeAssistant, sessionId: string): Pro
  * Update session metadata (title/preview)
  */
 export function updateSessionInList(sessionId: string, preview?: string, title?: string): void {
-  sessionState.sessions = sessionState.sessions.map((s) => {
+  sessionState.sessions = sessionState.sessions.map((s: any) => {
     if (s.session_id === sessionId) {
       return {
         ...s,

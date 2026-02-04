@@ -1,4 +1,4 @@
-import type { HomeAssistant, Provider, Model } from '$lib/types';
+import type { HomeAssistant, Provider } from '$lib/types';
 import { providerState } from '$lib/stores/providers';
 import { appState } from '$lib/stores/appState';
 import { PROVIDERS } from '$lib/types';
@@ -73,7 +73,7 @@ export async function fetchModels(hass: HomeAssistant, provider: string): Promis
     providerState.availableModels = [...(result.models || [])];
 
     // Select default model or first available
-    const defaultModel = providerState.availableModels.find((m) => m.default);
+    const defaultModel = providerState.availableModels.find((m: any) => m.default);
     providerState.selectedModel = defaultModel
       ? defaultModel.id
       : providerState.availableModels[0]?.id || null;

@@ -14,5 +14,5 @@ export const sessionState = $state({
  */
 export const hasSessions = $derived(sessionState.sessions.length > 0);
 export const activeSession = $derived(
-  sessionState.sessions.find((s) => s.session_id === sessionState.activeSessionId) || null
+  sessionState.sessions.find((s: SessionListItem) => s.session_id === sessionState.activeSessionId) || null
 );

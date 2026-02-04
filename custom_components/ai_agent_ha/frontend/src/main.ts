@@ -12,7 +12,7 @@ class AiAgentHAPanel extends HTMLElement {
   private _hass?: HomeAssistant;
   private _narrow = false;
   private _panel = true;
-  private shadowRoot!: ShadowRoot;
+  declare shadowRoot: ShadowRoot;
   private svelteApp?: any;
   private mountPoint?: HTMLDivElement;
 
@@ -55,7 +55,7 @@ class AiAgentHAPanel extends HTMLElement {
     try {
       console.log('[AiAgentHAPanel] Mounting Svelte app...');
       
-      this.svelteApp = new AiAgentPanel({
+      this.svelteApp = new (AiAgentPanel as any)({
         target: this.mountPoint!,
         props: {
           hass: this._hass,

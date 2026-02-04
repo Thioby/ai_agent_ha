@@ -1,13 +1,10 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import type { HomeAssistant } from '../types';
   import { appState } from '../stores/appState';
-  import { sessionState } from '../stores/sessions';
-  import { providerState } from '../stores/providers';
   import { uiState } from '../stores/ui';
   import { loadProviders } from '../services/provider.service';
   import { loadSessions } from '../services/session.service';
-  import { subscribeToEvents } from '../services/websocket.service';
   
   // Components
   import Header from './Header.svelte';
@@ -17,7 +14,7 @@
   import ThinkingPanel from './Debug/ThinkingPanel.svelte';
 
   // Props
-  let { hass, narrow = false, panel = true }: { hass: HomeAssistant; narrow?: boolean; panel?: boolean } = $props();
+  let { hass, narrow = false }: { hass: HomeAssistant; narrow?: boolean; panel?: boolean } = $props();
 
   // Update appState when hass changes
   $effect(() => {
@@ -25,23 +22,25 @@
   });
 
   // Lifecycle - Initialize
-  onMount(async () => {
+  onMount(() => {
     console.log('[AiAgentPanel] Mounting...');
     
     // Load providers and sessions in parallel
-    try {
-      await Promise.all([
-        loadProviders(hass),
-        loadSessions(hass)
-      ]);
-      console.log('[AiAgentPanel] Initialization complete');
-    } catch (error) {
-      console.error('[AiAgentPanel] Initialization error:', error);
-      appState.error = error instanceof Error ? error.message : 'Failed to initialize';
-    }
+    (async () => {
+      try {
+        await Promise.all([
+          loadProviders(hass),
+          loadSessions(hass)
+        ]);
+        console.log('[AiAgentPanel] Initialization complete');
+      } catch (error) {
+        console.error('[AiAgentPanel] Initialization error:', error);
+        appState.error = error instanceof Error ? error.message : 'Failed to initialize';
+      }
+    })();
 
-    // Subscribe to WebSocket events
-    const unsubscribe = subscribeToEvents(hass);
+    // Subscribe to WebSocket events (handled internally by the service)
+    // subscribeToEvents is called when sending messages
 
     // Window resize handler for mobile detection
     const handleResize = () => {
@@ -55,7 +54,6 @@
 
     // Cleanup
     return () => {
-      unsubscribe?.();
       window.removeEventListener('resize', handleResize);
     };
   });

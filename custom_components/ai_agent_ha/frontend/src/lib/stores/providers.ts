@@ -19,5 +19,5 @@ export const providerState = $state({
 export const hasProviders = $derived(providerState.availableProviders.length > 0);
 export const hasModels = $derived(providerState.availableModels.length > 0);
 export const selectedProviderInfo = $derived(
-  providerState.availableProviders.find((p) => p.value === providerState.selectedProvider) || null
+  providerState.availableProviders.find((p: Provider) => p.value === providerState.selectedProvider) || null
 );

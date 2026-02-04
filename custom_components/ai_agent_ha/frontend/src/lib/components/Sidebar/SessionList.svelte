@@ -9,7 +9,7 @@
 <div class="session-list">
   {#if sessionState.sessionsLoading}
     <!-- Loading skeletons -->
-    {#each Array(skeletonCount) as _, i}
+    {#each Array(skeletonCount) as _}
       <div class="session-skeleton">
         <div class="skeleton-line"></div>
         <div class="skeleton-line short"></div>

@@ -1,4 +1,4 @@
-import type { HomeAssistant, Message } from '$lib/types';
+import type { HomeAssistant } from '$lib/types';
 import { appState } from '$lib/stores/appState';
 import { sessionState } from '$lib/stores/sessions';
 import { providerState } from '$lib/stores/providers';

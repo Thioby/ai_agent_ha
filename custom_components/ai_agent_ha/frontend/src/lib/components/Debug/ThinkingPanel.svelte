@@ -42,7 +42,7 @@
         {#if conversation.length === 0}
           <div class="thinking-empty">No trace captured.</div>
         {:else}
-          {#each conversation as entry, index}
+          {#each conversation as entry}
             <div class="thinking-entry">
               <div class="badge">{entry.role || 'unknown'}</div>
               <pre>{entry.content || ''}</pre>
