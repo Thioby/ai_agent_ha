@@ -1,6 +1,13 @@
+// Add immediate execution log to verify bundle is loaded
+console.log('[AiAgentHAPanel] Bundle loaded and executing...');
+
 import appCss from './app.css?inline';
 import AiAgentPanel from './lib/components/AiAgentPanel.svelte';
 import type { HomeAssistant } from './lib/types';
+
+console.log('[AiAgentHAPanel] Imports completed successfully');
+console.log('[AiAgentHAPanel] CSS length:', appCss?.length || 0);
+console.log('[AiAgentHAPanel] AiAgentPanel component:', typeof AiAgentPanel);
 
 /**
  * AI Agent HA Panel Web Component
@@ -18,19 +25,28 @@ class AiAgentHAPanel extends HTMLElement {
 
   constructor() {
     super();
+    console.log('[AiAgentHAPanel] Constructor called');
     
-    // Attach Shadow DOM for style isolation
-    this.shadowRoot = this.attachShadow({ mode: 'open' });
-    
-    // Add global styles to shadow root
-    const style = document.createElement('style');
-    style.textContent = appCss;
-    this.shadowRoot.appendChild(style);
-    
-    // Create mount point
-    this.mountPoint = document.createElement('div');
-    this.mountPoint.id = 'svelte-app';
-    this.shadowRoot.appendChild(this.mountPoint);
+    try {
+      // Attach Shadow DOM for style isolation
+      this.shadowRoot = this.attachShadow({ mode: 'open' });
+      console.log('[AiAgentHAPanel] Shadow DOM attached');
+      
+      // Add global styles to shadow root
+      const style = document.createElement('style');
+      style.textContent = appCss;
+      this.shadowRoot.appendChild(style);
+      console.log('[AiAgentHAPanel] CSS injected into shadow DOM');
+      
+      // Create mount point
+      this.mountPoint = document.createElement('div');
+      this.mountPoint.id = 'svelte-app';
+      this.shadowRoot.appendChild(this.mountPoint);
+      console.log('[AiAgentHAPanel] Mount point created (#svelte-app)');
+    } catch (error) {
+      console.error('[AiAgentHAPanel] Constructor error:', error);
+      throw error;
+    }
   }
 
   connectedCallback() {
@@ -114,14 +130,21 @@ class AiAgentHAPanel extends HTMLElement {
    * Home Assistant integration - hass property setter
    */
   set hass(hass: HomeAssistant) {
+    console.log('[AiAgentHAPanel] hass property setter called');
+    console.log('[AiAgentHAPanel] hass object:', !!hass, hass ? 'valid' : 'null/undefined');
+    
     const isFirstSet = !this._hass;
     this._hass = hass;
 
+    console.log('[AiAgentHAPanel] Is first hass set:', isFirstSet);
+    
     if (isFirstSet) {
       // First time setting hass - initialize the app
+      console.log('[AiAgentHAPanel] First hass set - calling _initializeApp()');
       this._initializeApp();
     } else if (this.svelteApp) {
       // App already mounted - update props
+      console.log('[AiAgentHAPanel] Updating existing app props');
       this._updateProps();
     }
   }
@@ -160,12 +183,21 @@ class AiAgentHAPanel extends HTMLElement {
 }
 
 // Register the custom element
-if (!customElements.get('ai-agent-ha-panel')) {
-  customElements.define('ai-agent-ha-panel', AiAgentHAPanel);
-  console.log('[AiAgentHAPanel] Custom element registered: <ai-agent-ha-panel>');
-} else {
-  console.warn('[AiAgentHAPanel] Custom element already registered');
+console.log('[AiAgentHAPanel] Attempting to register custom element...');
+try {
+  if (!customElements.get('ai-agent-ha-panel')) {
+    customElements.define('ai-agent-ha-panel', AiAgentHAPanel);
+    console.log('[AiAgentHAPanel] ✓ Custom element registered: <ai-agent-ha-panel>');
+    console.log('[AiAgentHAPanel] ✓ Registration successful - element should now be available');
+  } else {
+    console.warn('[AiAgentHAPanel] Custom element already registered');
+  }
+} catch (error) {
+  console.error('[AiAgentHAPanel] Failed to register custom element:', error);
+  throw error;
 }
 
 // Export for potential direct usage
 export default AiAgentHAPanel;
+
+console.log('[AiAgentHAPanel] Module execution complete - waiting for element instantiation');
