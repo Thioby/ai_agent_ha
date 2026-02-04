@@ -5110,20 +5110,28 @@ const PROVIDERS = {
   local: "Local Model"
 };
 async function loadProviders(hass) {
+  console.log("[Provider] Loading providers...");
   const state2 = get(providerState);
-  if (state2.providersLoaded) return;
+  if (state2.providersLoaded) {
+    console.log("[Provider] Already loaded, skipping");
+    return;
+  }
   try {
     const allEntries = await hass.callWS({ type: "config_entries/get" });
+    console.log("[Provider] All config entries:", allEntries.length);
     const aiAgentEntries = allEntries.filter((entry) => entry.domain === "ai_agent_ha");
+    console.log("[Provider] AI Agent entries:", aiAgentEntries.length, aiAgentEntries);
     if (aiAgentEntries.length > 0) {
       const providers = aiAgentEntries.map((entry) => {
         const provider = resolveProviderFromEntry(entry);
+        console.log("[Provider] Resolved entry:", entry.title, "->", provider);
         if (!provider) return null;
         return {
           value: provider,
           label: PROVIDERS[provider] || provider
         };
       }).filter(Boolean);
+      console.log("[Provider] Final providers list:", providers);
       providerState.update((s2) => ({ ...s2, availableProviders: providers }));
       const currentState = get(providerState);
       if ((!currentState.selectedProvider || !providers.find((p2) => p2.value === currentState.selectedProvider)) && providers.length > 0) {
@@ -5144,12 +5152,14 @@ async function loadProviders(hass) {
   }
 }
 async function fetchModels(hass, provider) {
+  console.log("[Provider] Fetching models for provider:", provider);
   try {
     const result = await hass.callWS({
       type: "ai_agent_ha/models/list",
       provider
     });
     const models = [...result.models || []];
+    console.log("[Provider] Models received:", models);
     providerState.update((s2) => ({ ...s2, availableModels: models }));
     const defaultModel = models.find((m2) => m2.default);
     const selectedModel = defaultModel ? defaultModel.id : models[0]?.id || null;

@@ -12,20 +12,27 @@ import { PROVIDERS } from '$lib/types';
  * Load available providers from Home Assistant config
  */
 export async function loadProviders(hass: HomeAssistant): Promise<void> {
+  console.log('[Provider] Loading providers...');
   const state = get(providerState);
-  if (state.providersLoaded) return;
+  if (state.providersLoaded) {
+    console.log('[Provider] Already loaded, skipping');
+    return;
+  }
 
   try {
     // Get all config entries
     const allEntries = await hass.callWS({ type: 'config_entries/get' });
+    console.log('[Provider] All config entries:', allEntries.length);
 
     // Filter for AI Agent HA entries
     const aiAgentEntries = allEntries.filter((entry: any) => entry.domain === 'ai_agent_ha');
+    console.log('[Provider] AI Agent entries:', aiAgentEntries.length, aiAgentEntries);
 
     if (aiAgentEntries.length > 0) {
       const providers = aiAgentEntries
         .map((entry: any) => {
           const provider = resolveProviderFromEntry(entry);
+          console.log('[Provider] Resolved entry:', entry.title, '->', provider);
           if (!provider) return null;
 
           return {
@@ -35,6 +42,7 @@ export async function loadProviders(hass: HomeAssistant): Promise<void> {
         })
         .filter(Boolean) as Provider[];
 
+      console.log('[Provider] Final providers list:', providers);
       providerState.update(s => ({ ...s, availableProviders: providers }));
 
       const currentState = get(providerState);
@@ -69,6 +77,7 @@ export async function loadProviders(hass: HomeAssistant): Promise<void> {
  * Fetch available models for a provider
  */
 export async function fetchModels(hass: HomeAssistant, provider: string): Promise<void> {
+  console.log('[Provider] Fetching models for provider:', provider);
   try {
     const result = await hass.callWS({
       type: 'ai_agent_ha/models/list',
@@ -76,6 +85,7 @@ export async function fetchModels(hass: HomeAssistant, provider: string): Promis
     });
 
     const models = [...(result.models || [])];
+    console.log('[Provider] Models received:', models);
     providerState.update(s => ({ ...s, availableModels: models }));
 
     // Select default model or first available
