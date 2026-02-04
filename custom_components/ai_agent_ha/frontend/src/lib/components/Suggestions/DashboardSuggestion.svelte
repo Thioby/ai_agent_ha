@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { DashboardSuggestion } from '$lib/types';
-  import { appState } from '$lib/stores/appState';
+  import { appState } from "$lib/stores/appState"
 
   let { dashboard }: { dashboard: DashboardSuggestion } = $props();
 

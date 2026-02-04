@@ -1,18 +1,25 @@
+import { writable, derived } from 'svelte/store';
 import type { SessionListItem } from '$lib/types';
 
 /**
- * Session management state using Svelte 5 Runes
+ * Session management state
  */
-export const sessionState = $state({
-  sessions: [] as SessionListItem[],
-  activeSessionId: null as string | null,
-  sessionsLoading: true,
-});
+export interface SessionStateType {
+  sessions: SessionListItem[];
+  activeSessionId: string | null;
+  sessionsLoading: boolean;
+}
 
-/**
- * Derived states
- */
-export const hasSessions = $derived(sessionState.sessions.length > 0);
-export const activeSession = $derived(
-  sessionState.sessions.find((s: SessionListItem) => s.session_id === sessionState.activeSessionId) || null
+const initialState: SessionStateType = {
+  sessions: [],
+  activeSessionId: null,
+  sessionsLoading: true,
+};
+
+export const sessionState = writable<SessionStateType>(initialState);
+
+// Derived stores
+export const hasSessions = derived(sessionState, $state => $state.sessions.length > 0);
+export const activeSession = derived(sessionState, $state =>
+  $state.sessions.find(s => s.session_id === $state.activeSessionId) || null
 );

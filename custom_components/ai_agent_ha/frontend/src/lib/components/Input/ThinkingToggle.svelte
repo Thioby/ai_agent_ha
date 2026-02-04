@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { appState } from '$lib/stores/appState';
+  import { appState } from "$lib/stores/appState"
 
   function toggleThinking(e: Event) {
     const target = e.target as HTMLInputElement;

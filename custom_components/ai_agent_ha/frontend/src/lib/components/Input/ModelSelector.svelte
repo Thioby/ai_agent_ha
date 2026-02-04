@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { providerState, hasModels } from '$lib/stores/providers';
+  import { providerState, hasModels } from "$lib/stores/providers"
 
   function handleChange(e: Event) {
     const target = e.target as HTMLSelectElement;

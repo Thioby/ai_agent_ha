@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Message } from '$lib/types';
   import { renderMarkdown } from '$lib/services/markdown.service';
-  import { sessionState } from '$lib/stores/sessions';
+  import { sessionState } from "$lib/stores/sessions"
 
   // Props
   let { message }: { message: Message } = $props();

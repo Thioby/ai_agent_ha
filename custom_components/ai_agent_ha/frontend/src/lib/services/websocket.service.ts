@@ -1,3 +1,4 @@
+import { get } from 'svelte/store';
 import type { HomeAssistant } from '$lib/types';
 import { appState } from '$lib/stores/appState';
 import { sessionState } from '$lib/stores/sessions';
@@ -14,21 +15,25 @@ export async function sendMessage(
   hass: HomeAssistant,
   message: string
 ): Promise<any> {
-  if (!sessionState.activeSessionId) {
+  const session = get(sessionState);
+  if (!session.activeSessionId) {
     throw new Error('No active session');
   }
 
+  const provider = get(providerState);
+  const app = get(appState);
+
   const wsParams: any = {
     type: 'ai_agent_ha/chat/send',
-    session_id: sessionState.activeSessionId,
+    session_id: session.activeSessionId,
     message: message,
-    provider: providerState.selectedProvider,
-    debug: appState.showThinking,
+    provider: provider.selectedProvider,
+    debug: app.showThinking,
   };
 
   // Add model if selected
-  if (providerState.selectedModel) {
-    wsParams.model = providerState.selectedModel;
+  if (provider.selectedModel) {
+    wsParams.model = provider.selectedModel;
   }
 
   return hass.callWS(wsParams);
@@ -79,20 +84,12 @@ export function parseAIResponse(content: string): {
         return {
           text: parsed.response || parsed.message || content,
         };
-      } else if (parsed.message) {
-        return {
-          text: parsed.message,
-        };
-      } else if (parsed.response) {
-        return {
-          text: parsed.response,
-        };
       }
     } catch (e) {
-      // Not valid JSON, use content as-is
+      // Not valid JSON, return as-is
     }
   }
 
-  // Default: return content as text
+  // Default: return content as markdown text
   return { text: content };
 }

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { HomeAssistant } from '../types';
-  import { appState } from '../stores/appState';
-  import { uiState } from '../stores/ui';
+  import { appState } from "$lib/stores/appState"
+  import { uiState } from "$lib/stores/ui"
   import { loadProviders } from '../services/provider.service';
   import { loadSessions } from '../services/session.service';
   

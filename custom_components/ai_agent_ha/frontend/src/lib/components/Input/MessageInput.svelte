@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { appState } from '$lib/stores/appState';
+  import { appState } from "$lib/stores/appState"
   import { autoResize } from '$lib/utils/dom';
 
   let { onSend }: { onSend: () => void } = $props();

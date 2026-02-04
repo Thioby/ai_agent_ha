@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { appState } from '$lib/stores/appState';
-  import { sessionState } from '$lib/stores/sessions';
-  import { providerState } from '$lib/stores/providers';
+  import { appState } from "$lib/stores/appState"
+  import { sessionState } from "$lib/stores/sessions"
+  import { providerState } from "$lib/stores/providers"
   import { sendMessage, parseAIResponse } from '$lib/services/websocket.service';
   import { createSession, updateSessionInList } from '$lib/services/session.service';
   import MessageInput from './MessageInput.svelte';

@@ -1,26 +1,31 @@
+import { writable, derived } from 'svelte/store';
 import type { HomeAssistant, Message } from '$lib/types';
 
 /**
- * Global application state using Svelte 5 Runes
- * This is the main reactive state container
+ * Global application state
  */
-export const appState = $state({
-  // Home Assistant instance
-  hass: null as HomeAssistant | null,
+export interface AppStateType {
+  hass: HomeAssistant | null;
+  messages: Message[];
+  isLoading: boolean;
+  error: string | null;
+  debugInfo: any;
+  showThinking: boolean;
+  thinkingExpanded: boolean;
+}
 
-  // Chat state
-  messages: [] as Message[],
+const initialState: AppStateType = {
+  hass: null,
+  messages: [],
   isLoading: false,
-  error: null as string | null,
-
-  // Debug info
-  debugInfo: null as any,
+  error: null,
+  debugInfo: null,
   showThinking: false,
   thinkingExpanded: false,
-});
+};
 
-/**
- * Derived states - automatically computed from appState
- */
-export const hasMessages = $derived(appState.messages.length > 0);
-export const hasError = $derived(appState.error !== null);
+export const appState = writable<AppStateType>(initialState);
+
+// Derived stores
+export const hasMessages = derived(appState, $state => $state.messages.length > 0);
+export const hasError = derived(appState, $state => $state.error !== null);

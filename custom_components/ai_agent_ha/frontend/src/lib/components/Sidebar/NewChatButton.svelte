@@ -1,20 +1,20 @@
 <script lang="ts">
-  import { appState } from '$lib/stores/appState';
-  import { providerState } from '$lib/stores/providers';
+  import { appState } from "$lib/stores/appState"
+  import { providerState } from "$lib/stores/providers"
   import { createSession } from '$lib/services/session.service';
 
   async function handleNewChat() {
-    if (!appState.hass) {
-      appState.error = 'Home Assistant not connected';
+    if (!$appState.hass) {
+      appState.update(s => ({ ...s, error: 'Home Assistant not connected' }));
       return;
     }
 
-    if (!providerState.selectedProvider) {
-      appState.error = 'Please select a provider first';
+    if (!$providerState.selectedProvider) {
+      appState.update(s => ({ ...s, error: 'Please select a provider first' }));
       return;
     }
 
-    await createSession(appState.hass, providerState.selectedProvider);
+    await createSession($appState.hass, $providerState.selectedProvider);
   }
 </script>
 

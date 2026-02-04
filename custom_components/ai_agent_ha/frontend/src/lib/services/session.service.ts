@@ -1,3 +1,4 @@
+import { get } from 'svelte/store';
 import type { HomeAssistant } from '$lib/types';
 import { sessionState } from '$lib/stores/sessions';
 import { appState } from '$lib/stores/appState';
@@ -11,23 +12,26 @@ import { clearSessionCache } from './markdown.service';
  * Load all sessions from Home Assistant
  */
 export async function loadSessions(hass: HomeAssistant): Promise<void> {
-  sessionState.sessionsLoading = true;
+  sessionState.update(s => ({ ...s, sessionsLoading: true }));
+  
   try {
     const result = await hass.callWS({
       type: 'ai_agent_ha/sessions/list',
     });
 
-    sessionState.sessions = result.sessions || [];
+    const sessions = result.sessions || [];
+    sessionState.update(s => ({ ...s, sessions }));
 
     // Auto-select first session if none selected
-    if (sessionState.sessions.length > 0 && !sessionState.activeSessionId) {
-      await selectSession(hass, sessionState.sessions[0].session_id);
+    const state = get(sessionState);
+    if (sessions.length > 0 && !state.activeSessionId) {
+      await selectSession(hass, sessions[0].session_id);
     }
   } catch (error) {
     console.error('Failed to load sessions:', error);
-    appState.error = 'Could not load conversations';
+    appState.update(s => ({ ...s, error: 'Could not load conversations' }));
   } finally {
-    sessionState.sessionsLoading = false;
+    sessionState.update(s => ({ ...s, sessionsLoading: false }));
   }
 }
 
@@ -35,9 +39,8 @@ export async function loadSessions(hass: HomeAssistant): Promise<void> {
  * Select a session and load its messages
  */
 export async function selectSession(hass: HomeAssistant, sessionId: string): Promise<void> {
-  sessionState.activeSessionId = sessionId;
-  appState.isLoading = true;
-  appState.error = null;
+  sessionState.update(s => ({ ...s, activeSessionId: sessionId }));
+  appState.update(s => ({ ...s, isLoading: true, error: null }));
 
   try {
     const result = await hass.callWS({
@@ -46,7 +49,7 @@ export async function selectSession(hass: HomeAssistant, sessionId: string): Pro
     });
 
     // Map messages from HA format to our format
-    appState.messages = (result.messages || []).map((m: any) => ({
+    const messages = (result.messages || []).map((m: any) => ({
       type: m.role === 'user' ? 'user' : 'assistant',
       text: m.content,
       automation: m.metadata?.automation,
@@ -56,6 +59,8 @@ export async function selectSession(hass: HomeAssistant, sessionId: string): Pro
       error_message: m.error_message,
     }));
 
+    appState.update(s => ({ ...s, messages }));
+
     // Close sidebar on mobile
     if (typeof window !== 'undefined' && window.innerWidth <= 768) {
       const { closeSidebar } = await import('$lib/stores/ui');
@@ -63,9 +68,9 @@ export async function selectSession(hass: HomeAssistant, sessionId: string): Pro
     }
   } catch (error) {
     console.error('Failed to load session:', error);
-    appState.error = 'Could not load conversation';
+    appState.update(s => ({ ...s, error: 'Could not load conversation' }));
   } finally {
-    appState.isLoading = false;
+    appState.update(s => ({ ...s, isLoading: false }));
   }
 }
 
@@ -79,9 +84,13 @@ export async function createSession(hass: HomeAssistant, provider: string): Prom
       provider: provider,
     });
 
-    sessionState.sessions = [result, ...sessionState.sessions];
-    sessionState.activeSessionId = result.session_id;
-    appState.messages = [];
+    sessionState.update(s => ({
+      ...s,
+      sessions: [result, ...s.sessions],
+      activeSessionId: result.session_id,
+    }));
+    
+    appState.update(s => ({ ...s, messages: [] }));
 
     // Close sidebar on mobile
     if (typeof window !== 'undefined' && window.innerWidth <= 768) {
@@ -90,7 +99,7 @@ export async function createSession(hass: HomeAssistant, provider: string): Prom
     }
   } catch (error) {
     console.error('Failed to create session:', error);
-    appState.error = 'Could not create new conversation';
+    appState.update(s => ({ ...s, error: 'Could not create new conversation' }));
   }
 }
 
@@ -105,23 +114,27 @@ export async function deleteSession(hass: HomeAssistant, sessionId: string): Pro
     });
 
     // Remove from list
-    sessionState.sessions = sessionState.sessions.filter((s: any) => s.session_id !== sessionId);
+    sessionState.update(s => ({
+      ...s,
+      sessions: s.sessions.filter(session => session.session_id !== sessionId),
+    }));
 
     // Clear markdown cache for this session
     clearSessionCache(sessionId);
 
     // If deleted active session, select first available
-    if (sessionState.activeSessionId === sessionId) {
-      if (sessionState.sessions.length > 0) {
-        await selectSession(hass, sessionState.sessions[0].session_id);
+    const state = get(sessionState);
+    if (state.activeSessionId === sessionId) {
+      if (state.sessions.length > 0) {
+        await selectSession(hass, state.sessions[0].session_id);
       } else {
-        sessionState.activeSessionId = null;
-        appState.messages = [];
+        sessionState.update(s => ({ ...s, activeSessionId: null }));
+        appState.update(s => ({ ...s, messages: [] }));
       }
     }
   } catch (error) {
     console.error('Failed to delete session:', error);
-    appState.error = 'Could not delete conversation';
+    appState.update(s => ({ ...s, error: 'Could not delete conversation' }));
   }
 }
 
@@ -129,21 +142,25 @@ export async function deleteSession(hass: HomeAssistant, sessionId: string): Pro
  * Update session metadata (title/preview)
  */
 export function updateSessionInList(sessionId: string, preview?: string, title?: string): void {
-  sessionState.sessions = sessionState.sessions.map((s: any) => {
-    if (s.session_id === sessionId) {
-      return {
-        ...s,
-        preview: preview ? preview.substring(0, 100) : s.preview,
-        title: title || s.title,
-        message_count: (s.message_count || 0) + 2,
-        updated_at: new Date().toISOString(),
-      };
-    }
-    return s;
-  });
+  sessionState.update(s => {
+    const updatedSessions = s.sessions.map(session => {
+      if (session.session_id === sessionId) {
+        return {
+          ...session,
+          preview: preview ? preview.substring(0, 100) : session.preview,
+          title: title || session.title,
+          message_count: (session.message_count || 0) + 2,
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return session;
+    });
 
-  // Re-sort by updated_at
-  sessionState.sessions = [...sessionState.sessions].sort(
-    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-  );
+    // Re-sort by updated_at
+    const sortedSessions = [...updatedSessions].sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    );
+
+    return { ...s, sessions: sortedSessions };
+  });
 }

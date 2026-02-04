@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AutomationSuggestion } from '$lib/types';
-  import { appState } from '$lib/stores/appState';
+  import { appState } from "$lib/stores/appState"
 
   let { automation }: { automation: AutomationSuggestion } = $props();
 

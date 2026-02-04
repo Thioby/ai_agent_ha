@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { appState } from '$lib/stores/appState';
+  import { appState } from "$lib/stores/appState"
 
   function dismissError() {
     appState.error = null;

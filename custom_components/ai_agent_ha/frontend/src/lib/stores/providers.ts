@@ -1,23 +1,30 @@
+import { writable, derived } from 'svelte/store';
 import type { Provider, Model } from '$lib/types';
 
 /**
- * Provider and model selection state using Svelte 5 Runes
+ * Provider and model selection state
  */
-export const providerState = $state({
-  availableProviders: [] as Provider[],
-  selectedProvider: null as string | null,
+export interface ProviderStateType {
+  availableProviders: Provider[];
+  selectedProvider: string | null;
+  availableModels: Model[];
+  selectedModel: string | null;
+  providersLoaded: boolean;
+}
 
-  availableModels: [] as Model[],
-  selectedModel: null as string | null,
-
+const initialState: ProviderStateType = {
+  availableProviders: [],
+  selectedProvider: null,
+  availableModels: [],
+  selectedModel: null,
   providersLoaded: false,
-});
+};
 
-/**
- * Derived states
- */
-export const hasProviders = $derived(providerState.availableProviders.length > 0);
-export const hasModels = $derived(providerState.availableModels.length > 0);
-export const selectedProviderInfo = $derived(
-  providerState.availableProviders.find((p: Provider) => p.value === providerState.selectedProvider) || null
+export const providerState = writable<ProviderStateType>(initialState);
+
+// Derived stores
+export const hasProviders = derived(providerState, $state => $state.availableProviders.length > 0);
+export const hasModels = derived(providerState, $state => $state.availableModels.length > 0);
+export const selectedProviderInfo = derived(providerState, $state =>
+  $state.availableProviders.find(p => p.value === $state.selectedProvider) || null
 );

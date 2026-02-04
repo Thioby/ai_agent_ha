@@ -1,3 +1,4 @@
+import { get } from 'svelte/store';
 import type { HomeAssistant, Provider } from '$lib/types';
 import { providerState } from '$lib/stores/providers';
 import { appState } from '$lib/stores/appState';
@@ -11,7 +12,8 @@ import { PROVIDERS } from '$lib/types';
  * Load available providers from Home Assistant config
  */
 export async function loadProviders(hass: HomeAssistant): Promise<void> {
-  if (providerState.providersLoaded) return;
+  const state = get(providerState);
+  if (state.providersLoaded) return;
 
   try {
     // Get all config entries
@@ -33,30 +35,33 @@ export async function loadProviders(hass: HomeAssistant): Promise<void> {
         })
         .filter(Boolean) as Provider[];
 
-      providerState.availableProviders = providers;
+      providerState.update(s => ({ ...s, availableProviders: providers }));
 
+      const currentState = get(providerState);
+      
       // Auto-select first provider if none selected
       if (
-        (!providerState.selectedProvider ||
-          !providers.find((p) => p.value === providerState.selectedProvider)) &&
+        (!currentState.selectedProvider ||
+          !providers.find((p) => p.value === currentState.selectedProvider)) &&
         providers.length > 0
       ) {
-        providerState.selectedProvider = providers[0].value;
+        providerState.update(s => ({ ...s, selectedProvider: providers[0].value }));
       }
 
       // Fetch models for selected provider
-      if (providerState.selectedProvider) {
-        await fetchModels(hass, providerState.selectedProvider);
+      const updatedState = get(providerState);
+      if (updatedState.selectedProvider) {
+        await fetchModels(hass, updatedState.selectedProvider);
       }
 
-      providerState.providersLoaded = true;
+      providerState.update(s => ({ ...s, providersLoaded: true }));
     } else {
-      providerState.availableProviders = [];
+      providerState.update(s => ({ ...s, availableProviders: [] }));
     }
   } catch (error) {
     console.error('Error fetching config entries:', error);
-    appState.error = 'Failed to load AI provider configurations.';
-    providerState.availableProviders = [];
+    appState.update(s => ({ ...s, error: 'Failed to load AI provider configurations.' }));
+    providerState.update(s => ({ ...s, availableProviders: [] }));
   }
 }
 
@@ -70,17 +75,21 @@ export async function fetchModels(hass: HomeAssistant, provider: string): Promis
       provider: provider,
     });
 
-    providerState.availableModels = [...(result.models || [])];
+    const models = [...(result.models || [])];
+    providerState.update(s => ({ ...s, availableModels: models }));
 
     // Select default model or first available
-    const defaultModel = providerState.availableModels.find((m: any) => m.default);
-    providerState.selectedModel = defaultModel
-      ? defaultModel.id
-      : providerState.availableModels[0]?.id || null;
+    const defaultModel = models.find((m: any) => m.default);
+    const selectedModel = defaultModel ? defaultModel.id : models[0]?.id || null;
+    
+    providerState.update(s => ({ ...s, selectedModel }));
   } catch (e) {
     console.warn('Could not fetch available models:', e);
-    providerState.availableModels = [];
-    providerState.selectedModel = null;
+    providerState.update(s => ({ 
+      ...s, 
+      availableModels: [], 
+      selectedModel: null 
+    }));
   }
 }
 

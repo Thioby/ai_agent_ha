@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { appState } from '$lib/stores/appState';
-  import { hasProviders } from '$lib/stores/providers';
+  import { appState } from "$lib/stores/appState"
+  import { hasProviders } from "$lib/stores/providers"
 
   let { onclick }: { onclick: () => void } = $props();
 

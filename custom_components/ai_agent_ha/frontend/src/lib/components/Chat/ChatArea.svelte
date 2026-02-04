@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, afterUpdate } from 'svelte';
-  import { appState, hasMessages } from '$lib/stores/appState';
+  import { appState, hasMessages } from "$lib/stores/appState"
   import { scrollToBottom } from '$lib/utils/dom';
   import MessageBubble from './MessageBubble.svelte';
   import LoadingIndicator from './LoadingIndicator.svelte';

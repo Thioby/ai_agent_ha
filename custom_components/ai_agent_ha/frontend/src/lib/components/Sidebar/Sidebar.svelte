@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { uiState, closeSidebar } from '$lib/stores/ui';
+  import { uiState, closeSidebar } from "$lib/stores/ui"
   import { isMobile } from '$lib/utils/dom';
   import SessionList from './SessionList.svelte';
   import NewChatButton from './NewChatButton.svelte';
