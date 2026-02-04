@@ -2,12 +2,15 @@
 console.log('[AiAgentHAPanel] Bundle loaded and executing...');
 
 import appCss from './app.css?inline';
+// Import generated component CSS
+import componentCss from '../ai_agent_ha-panel.css?inline';
 import AiAgentPanel from './lib/components/AiAgentPanel.svelte';
 import { mount, unmount } from 'svelte';
 import type { HomeAssistant } from './lib/types';
 
 console.log('[AiAgentHAPanel] Imports completed successfully');
-console.log('[AiAgentHAPanel] CSS length:', appCss?.length || 0);
+console.log('[AiAgentHAPanel] App CSS length:', appCss?.length || 0);
+console.log('[AiAgentHAPanel] Component CSS length:', componentCss?.length || 0);
 console.log('[AiAgentHAPanel] AiAgentPanel component:', typeof AiAgentPanel);
 
 /**
@@ -34,10 +37,16 @@ class AiAgentHAPanel extends HTMLElement {
       console.log('[AiAgentHAPanel] Shadow DOM attached');
       
       // Add global styles to shadow root
-      const style = document.createElement('style');
-      style.textContent = appCss;
-      shadowRoot.appendChild(style);
-      console.log('[AiAgentHAPanel] CSS injected into shadow DOM');
+      const appStyle = document.createElement('style');
+      appStyle.textContent = appCss;
+      shadowRoot.appendChild(appStyle);
+      console.log('[AiAgentHAPanel] App CSS injected');
+      
+      // Add component styles to shadow root
+      const componentStyle = document.createElement('style');
+      componentStyle.textContent = componentCss;
+      shadowRoot.appendChild(componentStyle);
+      console.log('[AiAgentHAPanel] Component CSS injected');
       
       // Create mount point
       this.mountPoint = document.createElement('div');

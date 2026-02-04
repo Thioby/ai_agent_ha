@@ -5,11 +5,8 @@ import path from 'path';
 // Production build config
 export default defineConfig({
   plugins: [
-    svelte({
-      compilerOptions: {
-        css: 'injected' // Inject CSS into JavaScript for single-file bundle
-      }
-    })
+    svelte()
+    // CSS config is in svelte.config.js
   ],
   resolve: {
     alias: {
