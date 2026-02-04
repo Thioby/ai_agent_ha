@@ -197,6 +197,11 @@ try {
   throw error;
 }
 
+// Make available globally for Home Assistant panel system
+(window as any).customPanels = (window as any).customPanels || {};
+(window as any).customPanels['ai-agent-ha-panel'] = AiAgentHAPanel;
+console.log('[AiAgentHAPanel] Class exported to window.customPanels');
+
 // Export for potential direct usage
 export default AiAgentHAPanel;
 

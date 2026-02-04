@@ -362,8 +362,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.info("Starting RAG full reindex via service call...")
             await rag_manager.full_reindex()
             stats = await rag_manager.get_stats()
-            _LOGGER.info("RAG reindex completed: %d entities indexed", stats.get("total_documents", 0))
-            return {"success": True, "entities_indexed": stats.get("total_documents", 0)}
+            _LOGGER.info(
+                "RAG reindex completed: %d entities indexed",
+                stats.get("total_documents", 0),
+            )
+            return {
+                "success": True,
+                "entities_indexed": stats.get("total_documents", 0),
+            }
         except Exception as e:
             _LOGGER.error(f"Error during RAG reindex: {e}")
             return {"error": str(e)}
@@ -385,9 +391,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(
         DOMAIN, "update_dashboard", async_handle_update_dashboard
     )
-    hass.services.async_register(
-        DOMAIN, "rag_reindex", async_handle_rag_reindex
-    )
+    hass.services.async_register(DOMAIN, "rag_reindex", async_handle_rag_reindex)
 
     # Register WebSocket API commands (only once)
     if not hass.data[DOMAIN].get("_ws_registered"):
@@ -422,7 +426,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             require_admin=False,
             config={
                 "_panel_custom": {
-                    "name": "ai_agent_ha-panel",
+                    "name": "ai-agent-ha-panel",
                     "module_url": "/frontend/ai_agent_ha/ai_agent_ha-panel.js",
                     "embed_iframe": False,
                 }
