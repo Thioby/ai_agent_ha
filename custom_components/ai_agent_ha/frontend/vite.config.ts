@@ -17,8 +17,8 @@ export default defineConfig({
       fileName: () => 'ai_agent_ha-panel.js',
       formats: ['iife']
     },
-    outDir: '../',
-    emptyOutDir: false, // Don't delete other files in custom_components
+    outDir: './',
+    emptyOutDir: false, // Don't delete other files in frontend directory
     minify: 'terser',
     sourcemap: false,
     rollupOptions: {
