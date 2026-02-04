@@ -3,6 +3,7 @@ console.log('[AiAgentHAPanel] Bundle loaded and executing...');
 
 import appCss from './app.css?inline';
 import AiAgentPanel from './lib/components/AiAgentPanel.svelte';
+import { mount, unmount } from 'svelte';
 import type { HomeAssistant } from './lib/types';
 
 console.log('[AiAgentHAPanel] Imports completed successfully');
@@ -81,12 +82,14 @@ class AiAgentHAPanel extends HTMLElement {
         panel: this._panel
       });
       
-      // Svelte 5: props are passed directly in the config, not nested under 'props'
-      this.svelteApp = new (AiAgentPanel as any)({
+      // Svelte 5: use mount() API for programmatic component instantiation
+      this.svelteApp = mount(AiAgentPanel, {
         target: this.mountPoint!,
-        hass: this._hass,
-        narrow: this._narrow,
-        panel: this._panel,
+        props: {
+          hass: this._hass,
+          narrow: this._narrow,
+          panel: this._panel,
+        },
       });
 
       console.log('[AiAgentHAPanel] Svelte app mounted successfully');
@@ -101,7 +104,7 @@ class AiAgentHAPanel extends HTMLElement {
   private _destroyApp() {
     if (this.svelteApp) {
       try {
-        this.svelteApp.$destroy();
+        unmount(this.svelteApp);
         this.svelteApp = null;
         console.log('[AiAgentHAPanel] Svelte app destroyed');
       } catch (error) {
@@ -119,11 +122,17 @@ class AiAgentHAPanel extends HTMLElement {
     }
 
     try {
-      // Update props through Svelte's reactivity system
-      this.svelteApp.$set({
-        hass: this._hass,
-        narrow: this._narrow,
-        panel: this._panel,
+      // Svelte 5: Remount component with new props
+      // Props bound via $props() are reactive, but for external updates we need to remount
+      console.log('[AiAgentHAPanel] Remounting with updated props');
+      unmount(this.svelteApp);
+      this.svelteApp = mount(AiAgentPanel, {
+        target: this.mountPoint!,
+        props: {
+          hass: this._hass,
+          narrow: this._narrow,
+          panel: this._panel,
+        },
       });
     } catch (error) {
       console.error('[AiAgentHAPanel] Error updating props:', error);
