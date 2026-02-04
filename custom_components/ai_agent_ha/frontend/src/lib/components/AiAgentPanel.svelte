@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import type { HomeAssistant } from '../types';
-  import { appState } from "$lib/stores/appState"
-  import { uiState } from "$lib/stores/ui"
+  import { appState } from '$lib/stores/appState';
+  import { uiState } from '$lib/stores/ui';
   import { loadProviders } from '../services/provider.service';
   import { loadSessions } from '../services/session.service';
   
@@ -18,7 +19,7 @@
 
   // Update appState when hass changes
   $effect(() => {
-    appState.hass = hass;
+    appState.update(s => ({ ...s, hass }));
   });
 
   // Lifecycle - Initialize
@@ -35,17 +36,18 @@
         console.log('[AiAgentPanel] Initialization complete');
       } catch (error) {
         console.error('[AiAgentPanel] Initialization error:', error);
-        appState.error = error instanceof Error ? error.message : 'Failed to initialize';
+        appState.update(s => ({ 
+          ...s, 
+          error: error instanceof Error ? error.message : 'Failed to initialize' 
+        }));
       }
     })();
-
-    // Subscribe to WebSocket events (handled internally by the service)
-    // subscribeToEvents is called when sending messages
 
     // Window resize handler for mobile detection
     const handleResize = () => {
       const isMobile = window.innerWidth <= 768;
-      if (!isMobile && uiState.sidebarOpen) {
+      const currentUiState = get(uiState);
+      if (!isMobile && currentUiState.sidebarOpen) {
         // Keep sidebar open on desktop
       }
     };
@@ -60,7 +62,7 @@
 
   // Computed values
   const isMobile = $derived(narrow || window.innerWidth <= 768);
-  const showThinkingPanel = $derived(appState.showThinking && appState.debugInfo.length > 0);
+  const showThinkingPanel = $derived($appState.showThinking && $appState.debugInfo?.length > 0);
 </script>
 
 <div class="ai-agent-panel" class:narrow={isMobile}>

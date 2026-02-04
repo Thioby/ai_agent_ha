@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, afterUpdate } from 'svelte';
+import { get } from 'svelte/store';
   import { appState, hasMessages } from "$lib/stores/appState"
   import { scrollToBottom } from '$lib/utils/dom';
   import MessageBubble from './MessageBubble.svelte';

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Message } from '$lib/types';
+import { get } from 'svelte/store';
   import { renderMarkdown } from '$lib/services/markdown.service';
   import { sessionState } from "$lib/stores/sessions"
 

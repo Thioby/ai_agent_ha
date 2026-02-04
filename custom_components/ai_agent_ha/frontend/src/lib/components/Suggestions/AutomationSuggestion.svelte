@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { AutomationSuggestion } from '$lib/types';
+import { get } from 'svelte/store';
   import { appState } from "$lib/stores/appState"
 
   let { automation }: { automation: AutomationSuggestion } = $props();

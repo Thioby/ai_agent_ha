@@ -1,5 +1,6 @@
 <script lang="ts">
   import { appState } from "$lib/stores/appState"
+import { get } from 'svelte/store';
   import { autoResize } from '$lib/utils/dom';
 
   let { onSend }: { onSend: () => void } = $props();

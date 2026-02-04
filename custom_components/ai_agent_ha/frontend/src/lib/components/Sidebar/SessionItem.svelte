@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { SessionListItem } from '$lib/types';
+import { get } from 'svelte/store';
   import { appState } from "$lib/stores/appState"
   import { sessionState } from "$lib/stores/sessions"
   import { selectSession, deleteSession } from '$lib/services/session.service';

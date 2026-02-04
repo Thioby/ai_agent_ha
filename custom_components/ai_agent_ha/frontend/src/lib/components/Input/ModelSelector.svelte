@@ -1,5 +1,6 @@
 <script lang="ts">
   import { providerState, hasModels } from "$lib/stores/providers"
+import { get } from 'svelte/store';
 
   function handleChange(e: Event) {
     const target = e.target as HTMLSelectElement;

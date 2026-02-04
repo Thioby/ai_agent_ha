@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { appState } from "$lib/stores/appState"
-  import { sessionState } from "$lib/stores/sessions"
-  import { providerState } from "$lib/stores/providers"
+  import { get } from 'svelte/store';
+  import { appState } from '$lib/stores/appState';
+  import { sessionState } from '$lib/stores/sessions';
+  import { providerState } from '$lib/stores/providers';
   import { sendMessage, parseAIResponse } from '$lib/services/websocket.service';
   import { createSession, updateSessionInList } from '$lib/services/session.service';
   import MessageInput from './MessageInput.svelte';
@@ -13,34 +14,40 @@
   let messageInput: MessageInput;
 
   async function handleSend() {
-    if (!appState.hass) return;
+    const currentAppState = get(appState);
+    if (!currentAppState.hass) return;
 
     const message = messageInput.getValue().trim();
-    if (!message || appState.isLoading) return;
+    if (!message || currentAppState.isLoading) return;
 
     // Clear input
     messageInput.clear();
 
-    appState.isLoading = true;
-    appState.error = null;
+    appState.update(s => ({ ...s, isLoading: true, error: null }));
 
     // Create session if none active
-    if (!sessionState.activeSessionId && providerState.selectedProvider) {
-      await createSession(appState.hass, providerState.selectedProvider);
+    const currentSessionState = get(sessionState);
+    const currentProviderState = get(providerState);
+    
+    if (!currentSessionState.activeSessionId && currentProviderState.selectedProvider) {
+      await createSession(currentAppState.hass, currentProviderState.selectedProvider);
     }
 
-    if (!sessionState.activeSessionId) {
-      appState.error = 'No active session';
-      appState.isLoading = false;
+    const updatedSessionState = get(sessionState);
+    if (!updatedSessionState.activeSessionId) {
+      appState.update(s => ({ ...s, error: 'No active session', isLoading: false }));
       return;
     }
 
     // Add user message
-    appState.messages = [...appState.messages, { type: 'user', text: message }];
+    appState.update(s => ({ 
+      ...s, 
+      messages: [...s.messages, { type: 'user', text: message }] 
+    }));
 
     try {
-      const result = await sendMessage(appState.hass, message);
-      appState.isLoading = false;
+      const result = await sendMessage(currentAppState.hass, message);
+      appState.update(s => ({ ...s, isLoading: false }));
 
       if (result.assistant_message) {
         let { text, automation, dashboard } = parseAIResponse(
@@ -57,31 +64,35 @@
         };
 
         if (result.assistant_message.status === 'error') {
-          appState.error = result.assistant_message.error_message;
+          appState.update(s => ({ ...s, error: result.assistant_message.error_message }));
           assistantMsg.text = `Error: ${result.assistant_message.error_message}`;
         }
 
-        appState.messages = [...appState.messages, assistantMsg];
+        appState.update(s => ({ 
+          ...s, 
+          messages: [...s.messages, assistantMsg] 
+        }));
 
         // Update session in list
-        const session = sessionState.sessions.find(
-          (s) => s.session_id === sessionState.activeSessionId
-        );
+        const sessions = get(sessionState).sessions;
+        const activeId = get(sessionState).activeSessionId;
+        const session = sessions.find(s => s.session_id === activeId);
         const isNewConversation = session?.title === 'New Conversation';
         updateSessionInList(
-          sessionState.activeSessionId,
+          activeId!,
           message,
           isNewConversation ? message.substring(0, 40) + (message.length > 40 ? '...' : '') : undefined
         );
       }
     } catch (error: any) {
       console.error('WebSocket error:', error);
-      appState.isLoading = false;
-      appState.error = error.message || 'An error occurred while processing your request';
-      appState.messages = [
-        ...appState.messages,
-        { type: 'assistant', text: `Error: ${appState.error}` },
-      ];
+      const errorMessage = error.message || 'An error occurred while processing your request';
+      appState.update(s => ({
+        ...s,
+        isLoading: false,
+        error: errorMessage,
+        messages: [...s.messages, { type: 'assistant', text: `Error: ${errorMessage}` }],
+      }));
     }
   }
 </script>

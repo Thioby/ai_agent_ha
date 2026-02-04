@@ -1,5 +1,6 @@
 <script lang="ts">
   import { appState } from "$lib/stores/appState"
+import { get } from 'svelte/store';
 
   function toggleThinking(e: Event) {
     const target = e.target as HTMLInputElement;

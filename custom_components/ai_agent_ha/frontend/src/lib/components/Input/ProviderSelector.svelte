@@ -1,5 +1,6 @@
 <script lang="ts">
   import { providerState, hasProviders } from "$lib/stores/providers"
+import { get } from 'svelte/store';
   import { appState } from "$lib/stores/appState"
   import { fetchModels } from '$lib/services/provider.service';
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { appState } from "$lib/stores/appState"
+import { get } from 'svelte/store';
   import { hasProviders } from "$lib/stores/providers"
 
   let { onclick }: { onclick: () => void } = $props();

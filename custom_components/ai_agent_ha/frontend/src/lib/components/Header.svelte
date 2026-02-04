@@ -1,5 +1,6 @@
 <script lang="ts">
   import { appState } from "$lib/stores/appState"
+import { get } from 'svelte/store';
   import { sessionState } from "$lib/stores/sessions"
   import { toggleSidebar } from "$lib/stores/ui"
   import { deleteSession } from '$lib/services/session.service';

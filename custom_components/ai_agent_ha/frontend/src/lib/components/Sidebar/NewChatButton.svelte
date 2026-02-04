@@ -1,5 +1,6 @@
 <script lang="ts">
   import { appState } from "$lib/stores/appState"
+import { get } from 'svelte/store';
   import { providerState } from "$lib/stores/providers"
   import { createSession } from '$lib/services/session.service';
 

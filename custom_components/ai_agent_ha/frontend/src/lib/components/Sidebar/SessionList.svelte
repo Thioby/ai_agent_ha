@@ -1,5 +1,6 @@
 <script lang="ts">
   import { sessionState, hasSessions } from "$lib/stores/sessions"
+import { get } from 'svelte/store';
   import SessionItem from './SessionItem.svelte';
 
   // Loading skeleton count
