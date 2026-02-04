@@ -39,7 +39,7 @@ import { get } from 'svelte/store';
     bind:this={textarea}
     bind:value
     placeholder="Ask me anything about your Home Assistant..."
-    disabled={appState.isLoading}
+    disabled={$appState.isLoading}
     oninput={handleInput}
     onkeydown={handleKeyDown}
   ></textarea>

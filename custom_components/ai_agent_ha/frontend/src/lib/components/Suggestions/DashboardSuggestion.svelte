@@ -28,7 +28,7 @@ import { get } from 'svelte/store';
       appState.error = error.message || 'An error occurred while creating the dashboard';
       appState.messages = [
         ...appState.messages,
-        { type: 'assistant', text: `Error: ${appState.error}` },
+        { type: 'assistant', text: `Error: ${$appState.error}` },
       ];
     } finally {
       appState.isLoading = false;
@@ -59,14 +59,14 @@ import { get } from 'svelte/store';
   </div>
   
   <div class="dashboard-actions">
-    <button class="approve-btn" onclick={handleApprove} disabled={appState.isLoading}>
+    <button class="approve-btn" onclick={handleApprove} disabled={$appState.isLoading}>
       <svg viewBox="0 0 24 24" class="icon">
         <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/>
         <path d="M7 10h2v7H7zm4-3h2v10h-2zm4 6h2v4h-2z"/>
       </svg>
       Create Dashboard
     </button>
-    <button class="reject-btn" onclick={handleReject} disabled={appState.isLoading}>
+    <button class="reject-btn" onclick={handleReject} disabled={$appState.isLoading}>
       <svg viewBox="0 0 24 24" class="icon">
         <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
       </svg>

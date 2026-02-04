@@ -1,43 +1,43 @@
 <script lang="ts">
-  import { appState } from "$lib/stores/appState"
-import { get } from 'svelte/store';
+  import { appState } from '$lib/stores/appState';
 
-  function toggleThinking(e: Event) {
-    const target = e.target as HTMLInputElement;
-    appState.showThinking = target.checked;
-    if (!appState.showThinking) {
-      appState.thinkingExpanded = false;
-    }
+  function toggle() {
+    appState.update(s => ({ ...s, showThinking: !s.showThinking }));
   }
 </script>
 
 <label class="thinking-toggle">
   <input
     type="checkbox"
-    checked={appState.showThinking}
-    onchange={toggleThinking}
+    checked={$appState.showThinking}
+    onchange={toggle}
   />
-  Show thinking
+  <span class="label">Debug Mode</span>
 </label>
 
 <style>
   .thinking-toggle {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--secondary-text-color);
+    gap: 8px;
     cursor: pointer;
     user-select: none;
+    font-size: 14px;
   }
 
-  input {
-    margin: 0;
+  input[type="checkbox"] {
     cursor: pointer;
+    width: 18px;
+    height: 18px;
+  }
+
+  .label {
+    color: var(--secondary-text-color);
+    font-weight: 500;
   }
 
   @media (max-width: 768px) {
-    .thinking-toggle {
+    .label {
       display: none;
     }
   }

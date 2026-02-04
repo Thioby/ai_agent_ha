@@ -1,24 +1,27 @@
 <script lang="ts">
-  import { appState } from "$lib/stores/appState"
-import { get } from 'svelte/store';
-  import { sessionState } from "$lib/stores/sessions"
-  import { toggleSidebar } from "$lib/stores/ui"
+  import { get } from 'svelte/store';
+  import { appState } from '$lib/stores/appState';
+  import { sessionState } from '$lib/stores/sessions';
+  import { toggleSidebar } from '$lib/stores/ui';
   import { deleteSession } from '$lib/services/session.service';
   import { clearAllCaches } from '$lib/services/markdown.service';
 
   async function clearChat() {
-    if (!appState.hass) return;
-    if (!sessionState.activeSessionId) return;
+    const currentAppState = get(appState);
+    const currentSessionState = get(sessionState);
+    
+    if (!currentAppState.hass) return;
+    if (!currentSessionState.activeSessionId) return;
 
     if (confirm('Clear this conversation?')) {
-      await deleteSession(appState.hass, sessionState.activeSessionId);
+      await deleteSession(currentAppState.hass, currentSessionState.activeSessionId);
       clearAllCaches();
     }
   }
 </script>
 
 <div class="header">
-  <button class="menu-toggle" onclick={toggleSidebar}>
+  <button class="menu-toggle" onclick={toggleSidebar} aria-label="Toggle sidebar">
     <svg viewBox="0 0 24 24" class="icon">
       <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
     </svg>
@@ -33,7 +36,7 @@ import { get } from 'svelte/store';
   <button
     class="clear-button"
     onclick={clearChat}
-    disabled={appState.isLoading}
+    disabled={$appState.isLoading}
   >
     <svg viewBox="0 0 24 24" class="icon">
       <path d="M15 16h4v2h-4zm0-8h7v2h-7zm0 4h6v2h-6zM3 18c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2V8H3v10zM14 5h-3l-1-1H6L5 5H2v2h12z"/>

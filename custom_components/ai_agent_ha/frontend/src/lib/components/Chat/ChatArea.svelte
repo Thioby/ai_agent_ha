@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, afterUpdate } from 'svelte';
-import { get } from 'svelte/store';
-  import { appState, hasMessages } from "$lib/stores/appState"
+  import { appState, hasMessages } from '$lib/stores/appState';
   import { scrollToBottom } from '$lib/utils/dom';
   import MessageBubble from './MessageBubble.svelte';
   import LoadingIndicator from './LoadingIndicator.svelte';
@@ -21,15 +20,15 @@ import { get } from 'svelte/store';
 </script>
 
 <div class="messages" bind:this={messagesContainer}>
-  {#if !hasMessages && !appState.isLoading}
+  {#if !$hasMessages && !$appState.isLoading}
     <EmptyState />
   {/if}
 
-  {#each appState.messages as message (message.id || message.text)}
+  {#each $appState.messages as message (message.id || message.text)}
     <MessageBubble {message} />
   {/each}
 
-  {#if appState.isLoading}
+  {#if $appState.isLoading}
     <LoadingIndicator />
   {/if}
 
