@@ -24,7 +24,7 @@
     <EmptyState />
   {/if}
 
-  {#each $appState.messages as message (message.id || message.text)}
+  {#each $appState.messages as message (message.id)}
     <MessageBubble {message} />
   {/each}
 

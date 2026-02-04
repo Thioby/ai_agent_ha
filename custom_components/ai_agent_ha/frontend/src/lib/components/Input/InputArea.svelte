@@ -42,7 +42,11 @@
     // Add user message
     appState.update(s => ({ 
       ...s, 
-      messages: [...s.messages, { type: 'user', text: message }] 
+      messages: [...s.messages, { 
+        id: `user-${Date.now()}-${Math.random()}`,
+        type: 'user', 
+        text: message 
+      }] 
     }));
 
     try {
@@ -55,6 +59,7 @@
         );
 
         const assistantMsg: any = {
+          id: `assistant-${Date.now()}-${Math.random()}`,
           type: 'assistant',
           text,
           automation: automation || result.assistant_message.metadata?.automation,
@@ -91,7 +96,11 @@
         ...s,
         isLoading: false,
         error: errorMessage,
-        messages: [...s.messages, { type: 'assistant', text: `Error: ${errorMessage}` }],
+        messages: [...s.messages, { 
+          id: `error-${Date.now()}-${Math.random()}`,
+          type: 'assistant', 
+          text: `Error: ${errorMessage}` 
+        }],
       }));
     }
   }

@@ -11106,7 +11106,9 @@ async function selectSession(hass, sessionId) {
     });
     const rawMessages = result.messages || [];
     console.log("[Session] Raw messages from WS:", rawMessages.length, rawMessages);
-    const messages = rawMessages.map((m2) => ({
+    const messages = rawMessages.map((m2, index2) => ({
+      id: `${sessionId}-${index2}-${m2.timestamp || Date.now()}`,
+      // Unique ID for each message
       type: m2.role === "user" ? "user" : "assistant",
       text: m2.content,
       automation: m2.metadata?.automation,
@@ -11549,7 +11551,7 @@ function ChatArea($$anchor, $$props) {
     });
   }
   var node_1 = sibling(node, 2);
-  each(node_1, 1, () => $appState().messages, (message) => message.id || message.text, ($$anchor2, message) => {
+  each(node_1, 1, () => $appState().messages, (message) => message.id, ($$anchor2, message) => {
     MessageBubble($$anchor2, {
       get message() {
         return get$1(message);
@@ -11812,7 +11814,14 @@ function InputArea($$anchor, $$props) {
     }
     appState.update((s2) => ({
       ...s2,
-      messages: [...s2.messages, { type: "user", text: message }]
+      messages: [
+        ...s2.messages,
+        {
+          id: `user-${Date.now()}-${Math.random()}`,
+          type: "user",
+          text: message
+        }
+      ]
     }));
     try {
       const result = await sendMessage(currentAppState.hass, message);
@@ -11820,6 +11829,7 @@ function InputArea($$anchor, $$props) {
       if (result.assistant_message) {
         let { text: text2, automation, dashboard } = parseAIResponse(result.assistant_message.content || "");
         const assistantMsg = {
+          id: `assistant-${Date.now()}-${Math.random()}`,
           type: "assistant",
           text: text2,
           automation: automation || result.assistant_message.metadata?.automation,
@@ -11847,7 +11857,11 @@ function InputArea($$anchor, $$props) {
         error: errorMessage,
         messages: [
           ...s2.messages,
-          { type: "assistant", text: `Error: ${errorMessage}` }
+          {
+            id: `error-${Date.now()}-${Math.random()}`,
+            type: "assistant",
+            text: `Error: ${errorMessage}`
+          }
         ]
       }));
     }

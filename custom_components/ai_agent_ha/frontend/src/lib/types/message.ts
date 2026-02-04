@@ -10,7 +10,7 @@ export interface MessageMetadata {
 }
 
 export interface Message {
-  id?: string;
+  id: string; // Required for Svelte each keying
   type: MessageType;
   text: string;
   timestamp?: string;

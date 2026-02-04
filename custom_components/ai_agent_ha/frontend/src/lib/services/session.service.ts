@@ -52,7 +52,8 @@ export async function selectSession(hass: HomeAssistant, sessionId: string): Pro
     const rawMessages = result.messages || [];
     console.log('[Session] Raw messages from WS:', rawMessages.length, rawMessages);
     
-    const messages = rawMessages.map((m: any) => ({
+    const messages = rawMessages.map((m: any, index: number) => ({
+      id: `${sessionId}-${index}-${m.timestamp || Date.now()}`, // Unique ID for each message
       type: m.role === 'user' ? 'user' : 'assistant',
       text: m.content,
       automation: m.metadata?.automation,
