@@ -117,49 +117,24 @@ class AiAgentHAPanel extends HTMLElement {
    * Update Svelte component props efficiently
    */
   private _updateProps() {
-    if (!this.svelteApp) {
-      return;
-    }
-
-    try {
-      // Svelte 5: Remount component with new props
-      // Props bound via $props() are reactive, but for external updates we need to remount
-      console.log('[AiAgentHAPanel] Remounting with updated props');
-      unmount(this.svelteApp);
-      this.svelteApp = mount(AiAgentPanel, {
-        target: this.mountPoint!,
-        props: {
-          hass: this._hass,
-          narrow: this._narrow,
-          panel: this._panel,
-        },
-      });
-    } catch (error) {
-      console.error('[AiAgentHAPanel] Error updating props:', error);
-    }
+    // Intentionally empty - we don't update props after mount
+    // to avoid infinite remount loops. Component uses WebSocket for updates.
   }
 
   /**
    * Home Assistant integration - hass property setter
    */
   set hass(hass: HomeAssistant) {
-    console.log('[AiAgentHAPanel] hass property setter called');
-    console.log('[AiAgentHAPanel] hass object:', !!hass, hass ? 'valid' : 'null/undefined');
-    
     const isFirstSet = !this._hass;
     this._hass = hass;
-
-    console.log('[AiAgentHAPanel] Is first hass set:', isFirstSet);
     
     if (isFirstSet) {
       // First time setting hass - initialize the app
       console.log('[AiAgentHAPanel] First hass set - calling _initializeApp()');
       this._initializeApp();
-    } else if (this.svelteApp) {
-      // App already mounted - update props
-      console.log('[AiAgentHAPanel] Updating existing app props');
-      this._updateProps();
     }
+    // Don't update props on every hass change - it causes infinite loop
+    // The component uses WebSocket for real-time updates, not hass prop
   }
 
   get hass(): HomeAssistant | undefined {

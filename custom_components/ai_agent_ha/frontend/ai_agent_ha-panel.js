@@ -11192,39 +11192,16 @@ class AiAgentHAPanel extends HTMLElement {
    * Update Svelte component props efficiently
    */
   _updateProps() {
-    if (!this.svelteApp) {
-      return;
-    }
-    try {
-      console.log("[AiAgentHAPanel] Remounting with updated props");
-      unmount(this.svelteApp);
-      this.svelteApp = mount(AiAgentPanel, {
-        target: this.mountPoint,
-        props: {
-          hass: this._hass,
-          narrow: this._narrow,
-          panel: this._panel
-        }
-      });
-    } catch (error) {
-      console.error("[AiAgentHAPanel] Error updating props:", error);
-    }
   }
   /**
    * Home Assistant integration - hass property setter
    */
   set hass(hass) {
-    console.log("[AiAgentHAPanel] hass property setter called");
-    console.log("[AiAgentHAPanel] hass object:", !!hass, hass ? "valid" : "null/undefined");
     const isFirstSet = !this._hass;
     this._hass = hass;
-    console.log("[AiAgentHAPanel] Is first hass set:", isFirstSet);
     if (isFirstSet) {
       console.log("[AiAgentHAPanel] First hass set - calling _initializeApp()");
       this._initializeApp();
-    } else if (this.svelteApp) {
-      console.log("[AiAgentHAPanel] Updating existing app props");
-      this._updateProps();
     }
   }
   get hass() {
