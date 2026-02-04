@@ -25,8 +25,8 @@ export default defineConfig({
     },
     outDir: './',
     emptyOutDir: false,
-    minify: 'terser',
-    sourcemap: false,
+    minify: false, // Disable minification for debugging
+    sourcemap: true,
     cssCodeSplit: false, // Don't split CSS
     rollupOptions: {
       output: {
