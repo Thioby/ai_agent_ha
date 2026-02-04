@@ -19,7 +19,7 @@ class AiAgentHAPanel extends HTMLElement {
   private _hass?: HomeAssistant;
   private _narrow = false;
   private _panel = true;
-  declare shadowRoot: ShadowRoot;
+  // shadowRoot is inherited from HTMLElement, don't redeclare
   private svelteApp?: any;
   private mountPoint?: HTMLDivElement;
 
@@ -29,19 +29,19 @@ class AiAgentHAPanel extends HTMLElement {
     
     try {
       // Attach Shadow DOM for style isolation
-      this.shadowRoot = this.attachShadow({ mode: 'open' });
+      const shadowRoot = this.attachShadow({ mode: 'open' });
       console.log('[AiAgentHAPanel] Shadow DOM attached');
       
       // Add global styles to shadow root
       const style = document.createElement('style');
       style.textContent = appCss;
-      this.shadowRoot.appendChild(style);
+      shadowRoot.appendChild(style);
       console.log('[AiAgentHAPanel] CSS injected into shadow DOM');
       
       // Create mount point
       this.mountPoint = document.createElement('div');
       this.mountPoint.id = 'svelte-app';
-      this.shadowRoot.appendChild(this.mountPoint);
+      shadowRoot.appendChild(this.mountPoint);
       console.log('[AiAgentHAPanel] Mount point created (#svelte-app)');
     } catch (error) {
       console.error('[AiAgentHAPanel] Constructor error:', error);
