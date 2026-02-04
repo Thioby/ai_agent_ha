@@ -49,7 +49,10 @@ export async function selectSession(hass: HomeAssistant, sessionId: string): Pro
     });
 
     // Map messages from HA format to our format
-    const messages = (result.messages || []).map((m: any) => ({
+    const rawMessages = result.messages || [];
+    console.log('[Session] Raw messages from WS:', rawMessages.length, rawMessages);
+    
+    const messages = rawMessages.map((m: any) => ({
       type: m.role === 'user' ? 'user' : 'assistant',
       text: m.content,
       automation: m.metadata?.automation,
@@ -58,7 +61,8 @@ export async function selectSession(hass: HomeAssistant, sessionId: string): Pro
       status: m.status,
       error_message: m.error_message,
     }));
-
+    
+    console.log('[Session] Mapped messages:', messages.length, messages);
     appState.update(s => ({ ...s, messages }));
 
     // Close sidebar on mobile

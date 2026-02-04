@@ -11104,7 +11104,9 @@ async function selectSession(hass, sessionId) {
       type: "ai_agent_ha/sessions/get",
       session_id: sessionId
     });
-    const messages = (result.messages || []).map((m2) => ({
+    const rawMessages = result.messages || [];
+    console.log("[Session] Raw messages from WS:", rawMessages.length, rawMessages);
+    const messages = rawMessages.map((m2) => ({
       type: m2.role === "user" ? "user" : "assistant",
       text: m2.content,
       automation: m2.metadata?.automation,
@@ -11113,6 +11115,7 @@ async function selectSession(hass, sessionId) {
       status: m2.status,
       error_message: m2.error_message
     }));
+    console.log("[Session] Mapped messages:", messages.length, messages);
     appState.update((s2) => ({ ...s2, messages }));
     if (typeof window !== "undefined" && window.innerWidth <= 768) {
       const { closeSidebar: closeSidebar2 } = await Promise.resolve().then(() => ui);
