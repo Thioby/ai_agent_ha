@@ -4,7 +4,13 @@ import path from 'path';
 
 // Production build config
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [
+    svelte({
+      compilerOptions: {
+        css: 'injected' // Inject CSS into JavaScript for single-file bundle
+      }
+    })
+  ],
   resolve: {
     alias: {
       '$lib': path.resolve(__dirname, './src/lib')
@@ -18,13 +24,18 @@ export default defineConfig({
       formats: ['iife']
     },
     outDir: './',
-    emptyOutDir: false, // Don't delete other files in frontend directory
+    emptyOutDir: false,
     minify: 'terser',
     sourcemap: false,
+    cssCodeSplit: false, // Don't split CSS
     rollupOptions: {
       output: {
-        inlineDynamicImports: true, // Single file bundle
-        manualChunks: undefined // Prevent code splitting
+        inlineDynamicImports: true,
+        manualChunks: undefined,
+        // Inline all assets including CSS
+        assetFileNames: (assetInfo) => {
+          return 'ai_agent_ha-panel.css';
+        }
       }
     },
     terserOptions: {

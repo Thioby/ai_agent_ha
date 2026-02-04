@@ -1,4 +1,4 @@
-import './app.css';
+import appCss from './app.css?inline';
 import AiAgentPanel from './lib/components/AiAgentPanel.svelte';
 import type { HomeAssistant } from './lib/types';
 
@@ -21,6 +21,11 @@ class AiAgentHAPanel extends HTMLElement {
     
     // Attach Shadow DOM for style isolation
     this.shadowRoot = this.attachShadow({ mode: 'open' });
+    
+    // Add global styles to shadow root
+    const style = document.createElement('style');
+    style.textContent = appCss;
+    this.shadowRoot.appendChild(style);
     
     // Create mount point
     this.mountPoint = document.createElement('div');

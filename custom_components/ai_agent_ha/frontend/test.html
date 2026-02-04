@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>AI Agent HA - Test</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+    #test-container {
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="test-container">
+    <ai-agent-ha-panel id="panel"></ai-agent-ha-panel>
+  </div>
+
+  <script src="./ai_agent_ha-panel.js"></script>
+  
+  <script>
+    console.log('Test page loaded');
+    
+    // Mock HomeAssistant object
+    const mockHass = {
+      callWS: async (params) => {
+        console.log('Mock WS call:', params);
+        if (params.type === 'ai_agent_ha/sessions/list') {
+          return { sessions: [] };
+        }
+        if (params.type === 'config_entries/get') {
+          return [];
+        }
+        return {};
+      },
+      connection: {
+        subscribeEvents: (callback, event) => {
+          console.log('Mock subscribe to:', event);
+          return () => console.log('Mock unsubscribe');
+        }
+      },
+      config: {
+        path: (p) => '/mock/' + p
+      }
+    };
+
+    // Wait for custom element to be defined
+    customElements.whenDefined('ai-agent-ha-panel').then(() => {
+      console.log('✅ Custom element ai-agent-ha-panel registered');
+      
+      const panel = document.getElementById('panel');
+      panel.hass = mockHass;
+      panel.narrow = window.innerWidth < 768;
+      
+      console.log('✅ Panel initialized with mock hass');
+      
+      // Check for runtime errors
+      setTimeout(() => {
+        console.log('=== RUNTIME CHECK ===');
+        console.log('Panel element:', panel);
+        console.log('Shadow root:', panel.shadowRoot);
+        
+        if (panel.shadowRoot) {
+          const app = panel.shadowRoot.querySelector('#svelte-app');
+          console.log('Svelte app mounted:', !!app);
+          
+          if (app && app.children.length > 0) {
+            console.log('✅ Component rendered successfully');
+            console.log('Children count:', app.children.length);
+          } else {
+            console.log('⚠️  Component may not have rendered');
+          }
+        }
+      }, 1000);
+    }).catch(err => {
+      console.error('❌ Failed to define custom element:', err);
+    });
+
+    // Catch any errors
+    window.addEventListener('error', (e) => {
+      console.error('❌ Runtime error:', e.message);
+      if (e.message.includes('$state')) {
+        console.error('💥 CRITICAL: $state error detected!');
+      }
+    });
+
+    console.log('Test script completed');
+  </script>
+</body>
+</html>
