@@ -15,10 +15,13 @@
   );
 </script>
 
-<div class="message" class:user={message.type === 'user'} class:assistant={message.type === 'assistant'}>
+<div class="message" class:user={message.type === 'user'} class:assistant={message.type === 'assistant'} class:streaming={message.isStreaming}>
   <div class="message-content">
     {#if message.type === 'assistant'}
       {@html renderedContent}
+      {#if message.isStreaming}
+        <span class="streaming-cursor">▋</span>
+      {/if}
     {:else}
       {message.text}
     {/if}
@@ -61,6 +64,14 @@
     line-height: 1.6;
   }
 
+  .streaming-cursor {
+    display: inline-block;
+    margin-left: 2px;
+    animation: blink 1s infinite;
+    color: var(--primary-color);
+    font-weight: bold;
+  }
+
   @keyframes fadeIn {
     from {
       opacity: 0;
@@ -70,6 +81,21 @@
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  .message.streaming {
+    /* Optional: add subtle pulsing effect while streaming */
+    animation: fadeIn 0.3s ease-out, pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.95; }
   }
 
   @media (max-width: 768px) {

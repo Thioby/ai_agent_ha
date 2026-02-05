@@ -573,6 +573,161 @@ class GeminiOAuthProvider(AIProvider):
             )
             return json.dumps(data)
 
+    async def get_response_stream(self, messages: list[dict[str, Any]], **kwargs: Any):
+        """Stream response from Gemini using OAuth token.
+
+        Args:
+            messages: List of message dictionaries with role and content.
+            **kwargs: Additional arguments:
+                - tools: List of tools for function calling.
+                - model: Optional model override (must be in GEMINI_AVAILABLE_MODELS).
+
+        Yields:
+            Dict chunks with type and content:
+                - {"type": "text", "content": str} - text chunks
+                - {"type": "tool_call", "name": str, "args": dict} - function calls
+                - {"type": "error", "message": str} - errors
+        """
+        # Allow per-request model override
+        model = kwargs.get("model") or self._model
+        if model not in GEMINI_AVAILABLE_MODELS:
+            _LOGGER.warning(
+                "Model '%s' not in available models, using default '%s'",
+                model,
+                self.DEFAULT_MODEL,
+            )
+            model = self.DEFAULT_MODEL
+
+        _LOGGER.info("GeminiOAuthProvider.get_response_stream called. model: %s", model)
+        access_token = await self._get_valid_token()
+
+        # Convert messages to Gemini format
+        gemini_contents, system_instruction = self._convert_messages(messages)
+
+        # Build request payload
+        request_payload: dict[str, Any] = {
+            "contents": gemini_contents,
+            "generationConfig": {
+                "temperature": self.config.get("temperature", 0.7),
+                "maxOutputTokens": 8192,
+            },
+        }
+
+        # Add system instruction if present
+        if system_instruction:
+            request_payload["systemInstruction"] = {
+                "parts": [{"text": system_instruction}]
+            }
+
+        # Add tools for function calling if provided
+        tools = kwargs.get("tools")
+        if tools:
+            gemini_tools = self._convert_tools(tools)
+            if gemini_tools:
+                request_payload["tools"] = gemini_tools
+
+        async with aiohttp.ClientSession() as session:
+            # Ensure we have a valid project ID
+            project_id = await self._ensure_project_id(session, access_token)
+
+            # Wrap payload for Cloud Code API
+            wrapped_payload = {
+                "project": project_id,
+                "model": model,
+                "request": request_payload,
+            }
+
+            # Use streamGenerateContent endpoint for streaming
+            url = f"{GEMINI_CODE_ASSIST_ENDPOINT}:streamGenerateContent"
+
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+                **GEMINI_CODE_ASSIST_HEADERS,
+            }
+
+            _LOGGER.debug("Gemini OAuth streaming request to: %s", url)
+
+            try:
+                async with session.post(
+                    url,
+                    headers=headers,
+                    json=wrapped_payload,
+                    timeout=aiohttp.ClientTimeout(total=300),
+                ) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        _LOGGER.error(
+                            "Gemini OAuth streaming error %d: %s",
+                            resp.status,
+                            error_text[:500],
+                        )
+                        yield {
+                            "type": "error",
+                            "message": f"API error {resp.status}: {error_text[:200]}",
+                        }
+                        return
+
+                    # Stream response chunks
+                    line_text = ""
+                    async for line in resp.content:
+                        if not line:
+                            continue
+
+                        try:
+                            # Gemini returns JSON per line
+                            line_text = line.decode("utf-8").strip()
+                            if not line_text:
+                                continue
+
+                            # Remove data: prefix if present (SSE format)
+                            if line_text.startswith("data: "):
+                                line_text = line_text[6:]
+
+                            chunk = json.loads(line_text)
+
+                            # Unwrap if response key exists
+                            if "response" in chunk:
+                                chunk = chunk["response"]
+
+                            # Parse candidates
+                            candidates = chunk.get("candidates", [])
+                            if not candidates:
+                                continue
+
+                            candidate = candidates[0]
+                            content = candidate.get("content", {})
+                            parts = content.get("parts", [])
+
+                            for part in parts:
+                                if "text" in part:
+                                    # Text chunk
+                                    yield {"type": "text", "content": part["text"]}
+                                elif "functionCall" in part:
+                                    # Function call
+                                    func_call = part["functionCall"]
+                                    yield {
+                                        "type": "tool_call",
+                                        "name": func_call.get("name", "unknown"),
+                                        "args": func_call.get("args", {}),
+                                    }
+
+                        except json.JSONDecodeError as e:
+                            _LOGGER.debug(
+                                "Skipping non-JSON line in stream: %s", line_text[:100]
+                            )
+                            continue
+                        except Exception as e:
+                            _LOGGER.error("Error processing stream chunk: %s", e)
+                            continue
+
+            except aiohttp.ClientError as e:
+                _LOGGER.error("Gemini streaming connection error: %s", e)
+                yield {"type": "error", "message": f"Connection error: {e}"}
+            except Exception as e:
+                _LOGGER.error("Gemini streaming error: %s", e)
+                yield {"type": "error", "message": str(e)}
+
     async def get_response(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
         """Get a response from Gemini using OAuth token.
 

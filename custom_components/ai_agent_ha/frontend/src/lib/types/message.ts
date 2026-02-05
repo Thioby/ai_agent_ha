@@ -14,11 +14,12 @@ export interface Message {
   type: MessageType;
   text: string;
   timestamp?: string;
-  status?: 'pending' | 'success' | 'error';
+  status?: 'pending' | 'streaming' | 'success' | 'completed' | 'error';
   error_message?: string;
   automation?: AutomationSuggestion;
   dashboard?: DashboardSuggestion;
   metadata?: MessageMetadata;
+  isStreaming?: boolean; // Flag for UI to show streaming cursor
 }
 
 /**

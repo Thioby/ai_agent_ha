@@ -3,7 +3,7 @@
   import { appState } from '$lib/stores/appState';
   import { sessionState } from '$lib/stores/sessions';
   import { providerState } from '$lib/stores/providers';
-  import { sendMessage, parseAIResponse } from '$lib/services/websocket.service';
+  import { sendMessage, sendMessageStream, parseAIResponse } from '$lib/services/websocket.service';
   import { createSession, updateSessionInList } from '$lib/services/session.service';
   import MessageInput from './MessageInput.svelte';
   import ProviderSelector from './ProviderSelector.svelte';
@@ -12,6 +12,7 @@
   import ThinkingToggle from './ThinkingToggle.svelte';
 
   let messageInput: MessageInput;
+  const USE_STREAMING = true; // Feature flag - set to false to disable streaming
 
   async function handleSend() {
     const currentAppState = get(appState);
@@ -50,44 +51,146 @@
     }));
 
     try {
-      const result = await sendMessage(currentAppState.hass, message);
-      appState.update(s => ({ ...s, isLoading: false }));
+      if (USE_STREAMING) {
+        // Use streaming API
+        let assistantMessageId = '';
+        let streamedText = '';
 
-      if (result.assistant_message) {
-        let { text, automation, dashboard } = parseAIResponse(
-          result.assistant_message.content || ''
-        );
+        await sendMessageStream(currentAppState.hass, message, {
+          onStart: (messageId: string) => {
+            assistantMessageId = messageId;
+            // Add placeholder message for streaming
+            appState.update(s => ({
+              ...s,
+              messages: [...s.messages, {
+                id: assistantMessageId,
+                type: 'assistant' as const,
+                text: '',
+                status: 'streaming' as const,
+                isStreaming: true,
+              }]
+            }));
+          },
+          
+          onChunk: (chunk: string) => {
+            streamedText += chunk;
+            // Update the streaming message
+            appState.update(s => ({
+              ...s,
+              messages: s.messages.map(msg =>
+                msg.id === assistantMessageId
+                  ? { ...msg, text: streamedText }
+                  : msg
+              )
+            }));
+          },
+          
+          onToolCall: (name: string, args: any) => {
+            console.log('Tool call:', name, args);
+            // Could show tool execution UI here
+          },
+          
+          onToolResult: (name: string, result: any) => {
+            console.log('Tool result:', name, result);
+          },
+          
+          onComplete: (result: any) => {
+            // Parse final result
+            let { text, automation, dashboard } = parseAIResponse(
+              result.assistant_message?.content || streamedText
+            );
 
-        const assistantMsg: any = {
-          id: `assistant-${Date.now()}-${Math.random()}`,
-          type: 'assistant',
-          text,
-          automation: automation || result.assistant_message.metadata?.automation,
-          dashboard: dashboard || result.assistant_message.metadata?.dashboard,
-          status: result.assistant_message.status,
-          error_message: result.assistant_message.error_message,
-        };
+            // Update message to completed state
+            appState.update(s => ({
+              ...s,
+              isLoading: false,
+              messages: s.messages.map(msg =>
+                msg.id === assistantMessageId
+                  ? {
+                      ...msg,
+                      text: text || streamedText,
+                      status: 'completed' as const,
+                      isStreaming: false,
+                      automation: automation || result.assistant_message?.metadata?.automation,
+                      dashboard: dashboard || result.assistant_message?.metadata?.dashboard,
+                    }
+                  : msg
+              )
+            }));
 
-        if (result.assistant_message.status === 'error') {
-          appState.update(s => ({ ...s, error: result.assistant_message.error_message }));
-          assistantMsg.text = `Error: ${result.assistant_message.error_message}`;
+            // Update session in list
+            const sessions = get(sessionState).sessions;
+            const activeId = get(sessionState).activeSessionId;
+            const session = sessions.find(s => s.session_id === activeId);
+            const isNewConversation = session?.title === 'New Conversation';
+            updateSessionInList(
+              activeId!,
+              message,
+              isNewConversation ? message.substring(0, 40) + (message.length > 40 ? '...' : '') : undefined
+            );
+          },
+          
+          onError: (error: string) => {
+            console.error('Streaming error:', error);
+            appState.update(s => ({
+              ...s,
+              isLoading: false,
+              error: error,
+              messages: s.messages.map(msg =>
+                msg.id === assistantMessageId
+                  ? {
+                      ...msg,
+                      text: `Error: ${error}`,
+                      status: 'error' as const,
+                      isStreaming: false,
+                      error_message: error,
+                    }
+                  : msg
+              )
+            }));
+          },
+        });
+      } else {
+        // Fallback to non-streaming (original code)
+        const result = await sendMessage(currentAppState.hass, message);
+        appState.update(s => ({ ...s, isLoading: false }));
+
+        if (result.assistant_message) {
+          let { text, automation, dashboard } = parseAIResponse(
+            result.assistant_message.content || ''
+          );
+
+          const assistantMsg: any = {
+            id: `assistant-${Date.now()}-${Math.random()}`,
+            type: 'assistant',
+            text,
+            automation: automation || result.assistant_message.metadata?.automation,
+            dashboard: dashboard || result.assistant_message.metadata?.dashboard,
+            status: result.assistant_message.status,
+            error_message: result.assistant_message.error_message,
+          };
+
+          if (result.assistant_message.status === 'error') {
+            appState.update(s => ({ ...s, error: result.assistant_message.error_message }));
+            assistantMsg.text = `Error: ${result.assistant_message.error_message}`;
+          }
+
+          appState.update(s => ({ 
+            ...s, 
+            messages: [...s.messages, assistantMsg] 
+          }));
+
+          // Update session in list
+          const sessions = get(sessionState).sessions;
+          const activeId = get(sessionState).activeSessionId;
+          const session = sessions.find(s => s.session_id === activeId);
+          const isNewConversation = session?.title === 'New Conversation';
+          updateSessionInList(
+            activeId!,
+            message,
+            isNewConversation ? message.substring(0, 40) + (message.length > 40 ? '...' : '') : undefined
+          );
         }
-
-        appState.update(s => ({ 
-          ...s, 
-          messages: [...s.messages, assistantMsg] 
-        }));
-
-        // Update session in list
-        const sessions = get(sessionState).sessions;
-        const activeId = get(sessionState).activeSessionId;
-        const session = sessions.find(s => s.session_id === activeId);
-        const isNewConversation = session?.title === 'New Conversation';
-        updateSessionInList(
-          activeId!,
-          message,
-          isNewConversation ? message.substring(0, 40) + (message.length > 40 ? '...' : '') : undefined
-        );
       }
     } catch (error: any) {
       console.error('WebSocket error:', error);

@@ -8,9 +8,10 @@ This is a slim orchestrator that delegates to specialized components:
 
 This replaces the 5000+ LOC God Class with a focused coordinator.
 """
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 from .query_processor import QueryProcessor
 from .response_parser import ResponseParser
@@ -101,7 +102,7 @@ class Agent:
             query=query,
             messages=self._conversation.get_messages(),
             system_prompt=self._system_prompt,
-            **kwargs
+            **kwargs,
         )
 
         if result.get("success"):
@@ -109,6 +110,50 @@ class Agent:
             self._conversation.add_assistant_message(result["response"])
 
         return result
+
+    async def process_query_stream(
+        self, query: str, **kwargs: Any
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Stream a user query response through the AI provider.
+
+        Delegates to QueryProcessor and updates conversation history on completion.
+
+        Args:
+            query: The user's query text.
+            **kwargs: Additional arguments passed to the processor (e.g., tools).
+
+        Yields:
+            Dict chunks with:
+                - type: "text" | "tool_call" | "tool_result" | "error" | "complete"
+                - content: The text content (for type="text")
+                - name: Tool name (for type="tool_call" | "tool_result")
+                - args: Tool arguments (for type="tool_call")
+                - result: Tool result (for type="tool_result")
+                - message: Error message (for type="error")
+                - messages: Updated message list (for type="complete")
+        """
+        accumulated_text = ""
+        success = False
+
+        async for chunk in self._query_processor.process_stream(
+            query=query,
+            messages=self._conversation.get_messages(),
+            system_prompt=self._system_prompt,
+            **kwargs,
+        ):
+            # Track accumulated text for conversation history
+            if chunk.get("type") == "text":
+                accumulated_text += chunk.get("content", "")
+            elif chunk.get("type") == "complete":
+                success = True
+
+            # Yield all chunks to caller
+            yield chunk
+
+        # Update conversation history if successful
+        if success and accumulated_text:
+            self._conversation.add_user_message(query)
+            self._conversation.add_assistant_message(accumulated_text)
 
     # === Entity Operations (delegate to EntityManager) ===
 
@@ -227,7 +272,9 @@ class Agent:
         Returns:
             Result dictionary with success status or error.
         """
-        return await self._get_dashboard_manager().create_dashboard(config, dashboard_id)
+        return await self._get_dashboard_manager().create_dashboard(
+            config, dashboard_id
+        )
 
     # === Registry Operations ===
 
@@ -274,6 +321,7 @@ class Agent:
         """
         if self._entity_manager is None:
             from ..managers.entity_manager import EntityManager
+
             self._entity_manager = EntityManager(self.hass)
         return self._entity_manager
 
@@ -285,6 +333,7 @@ class Agent:
         """
         if self._control_manager is None:
             from ..managers.control_manager import ControlManager
+
             self._control_manager = ControlManager(self.hass)
         return self._control_manager
 
@@ -296,6 +345,7 @@ class Agent:
         """
         if self._automation_manager is None:
             from ..managers.automation_manager import AutomationManager
+
             self._automation_manager = AutomationManager(self.hass)
         return self._automation_manager
 
@@ -307,6 +357,7 @@ class Agent:
         """
         if self._dashboard_manager is None:
             from ..managers.dashboard_manager import DashboardManager
+
             self._dashboard_manager = DashboardManager(self.hass)
         return self._dashboard_manager
 
@@ -318,5 +369,6 @@ class Agent:
         """
         if self._registry_manager is None:
             from ..managers.registry_manager import RegistryManager
+
             self._registry_manager = RegistryManager(self.hass)
         return self._registry_manager

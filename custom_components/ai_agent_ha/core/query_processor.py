@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 from ..function_calling import FunctionCallHandler, FunctionCall
 from ..tools.base import ToolRegistry
@@ -217,6 +217,263 @@ class QueryProcessor:
                 return result
 
         return None
+
+    async def process_stream(
+        self,
+        query: str,
+        messages: list[dict[str, Any]],
+        system_prompt: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        **kwargs: Any,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Process a user query and stream the AI response.
+
+        Args:
+            query: The user's query text.
+            messages: Conversation history (previous messages).
+            system_prompt: Optional system message for context.
+            tools: Optional list of tools available to the AI.
+            **kwargs: Additional arguments passed to the provider.
+
+        Yields:
+            Dict chunks with:
+                - type: "text" | "tool_call" | "tool_result" | "error" | "complete"
+                - content: The text content (for type="text")
+                - name: Tool name (for type="tool_call" | "tool_result")
+                - args: Tool arguments (for type="tool_call")
+                - result: Tool result (for type="tool_result")
+                - message: Error message (for type="error")
+                - messages: Updated message list (for type="complete")
+        """
+        # Sanitize the query
+        sanitized_query = self._sanitize_query(query)
+
+        # Check for empty query
+        if not sanitized_query:
+            yield {
+                "type": "error",
+                "message": "Query is empty or contains only whitespace",
+            }
+            return
+
+        # Extract RAG context from kwargs
+        rag_context = kwargs.pop("rag_context", None)
+
+        # Build the message list with RAG context
+        built_messages = self._build_messages(
+            sanitized_query,
+            messages,
+            system_prompt=system_prompt,
+            rag_context=rag_context,
+        )
+
+        hass = kwargs.get("hass")
+        current_iteration = 0
+
+        try:
+            while current_iteration < self.max_iterations:
+                # Check if provider supports streaming
+                if not hasattr(self.provider, "get_response_stream"):
+                    # Fall back to non-streaming
+                    _LOGGER.debug("Provider doesn't support streaming, using fallback")
+                    provider_kwargs: dict[str, Any] = {**kwargs}
+                    if tools is not None:
+                        provider_kwargs["tools"] = tools
+
+                    response_text = await self.provider.get_response(
+                        built_messages, **provider_kwargs
+                    )
+
+                    # Yield as single chunk
+                    yield {"type": "text", "content": response_text}
+
+                    # Detect function call
+                    function_calls = self._detect_function_call(response_text)
+
+                    if not function_calls:
+                        # No function call, return the response
+                        updated_messages = list(built_messages)
+                        if (
+                            system_prompt
+                            and updated_messages
+                            and updated_messages[0].get("role") == "system"
+                        ):
+                            updated_messages = updated_messages[1:]
+
+                        updated_messages.append(
+                            {"role": "assistant", "content": response_text}
+                        )
+
+                        yield {
+                            "type": "complete",
+                            "messages": updated_messages,
+                        }
+                        return
+
+                    # Handle function calls (same as non-streaming)
+                    built_messages.append(
+                        {"role": "assistant", "content": response_text}
+                    )
+
+                    for fc in function_calls:
+                        yield {
+                            "type": "tool_call",
+                            "name": fc.name,
+                            "args": fc.arguments,
+                        }
+
+                        try:
+                            result = await ToolRegistry.execute_tool(
+                                tool_id=fc.name, params=fc.arguments, hass=hass
+                            )
+                            result_str = json.dumps(result.to_dict())
+                            built_messages.append(
+                                {
+                                    "role": "function",
+                                    "name": fc.name,
+                                    "tool_use_id": fc.id,
+                                    "content": result_str,
+                                }
+                            )
+                            yield {
+                                "type": "tool_result",
+                                "name": fc.name,
+                                "result": result_str,
+                            }
+                        except Exception as e:
+                            error_msg = json.dumps({"error": str(e), "tool": fc.name})
+                            built_messages.append(
+                                {
+                                    "role": "function",
+                                    "name": fc.name,
+                                    "tool_use_id": fc.id,
+                                    "content": error_msg,
+                                }
+                            )
+                            yield {
+                                "type": "tool_result",
+                                "name": fc.name,
+                                "result": error_msg,
+                            }
+
+                    current_iteration += 1
+                    continue
+
+                # Provider supports streaming
+                provider_kwargs = {**kwargs}
+                if tools is not None:
+                    provider_kwargs["tools"] = tools
+
+                accumulated_text = ""
+                accumulated_tool_calls = []
+
+                async for chunk in self.provider.get_response_stream(
+                    built_messages, **provider_kwargs
+                ):
+                    if chunk.get("type") == "text":
+                        # Stream text chunks
+                        accumulated_text += chunk["content"]
+                        yield chunk
+                    elif chunk.get("type") == "tool_call":
+                        # Accumulate tool calls
+                        accumulated_tool_calls.append(chunk)
+                        yield chunk
+                    elif chunk.get("type") == "error":
+                        yield chunk
+                        return
+
+                # After streaming completes, check for function calls
+                if accumulated_tool_calls:
+                    # Convert to FunctionCall objects
+                    function_calls = [
+                        FunctionCall(
+                            id=tc.get("name", "unknown"),
+                            name=tc["name"],
+                            arguments=tc.get("args", {}),
+                        )
+                        for tc in accumulated_tool_calls
+                    ]
+
+                    # Append assistant's message (the tool call)
+                    built_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": json.dumps(
+                                {"functionCall": accumulated_tool_calls[0]}
+                            ),
+                        }
+                    )
+
+                    # Execute tools
+                    for fc in function_calls:
+                        try:
+                            result = await ToolRegistry.execute_tool(
+                                tool_id=fc.name, params=fc.arguments, hass=hass
+                            )
+                            result_str = json.dumps(result.to_dict())
+                            built_messages.append(
+                                {
+                                    "role": "function",
+                                    "name": fc.name,
+                                    "tool_use_id": fc.id,
+                                    "content": result_str,
+                                }
+                            )
+                            yield {
+                                "type": "tool_result",
+                                "name": fc.name,
+                                "result": result_str,
+                            }
+                        except Exception as e:
+                            error_msg = json.dumps({"error": str(e), "tool": fc.name})
+                            built_messages.append(
+                                {
+                                    "role": "function",
+                                    "name": fc.name,
+                                    "tool_use_id": fc.id,
+                                    "content": error_msg,
+                                }
+                            )
+                            yield {
+                                "type": "tool_result",
+                                "name": fc.name,
+                                "result": error_msg,
+                            }
+
+                    current_iteration += 1
+                    continue
+
+                # No function calls, complete
+                updated_messages = list(built_messages)
+                if (
+                    system_prompt
+                    and updated_messages
+                    and updated_messages[0].get("role") == "system"
+                ):
+                    updated_messages = updated_messages[1:]
+
+                updated_messages.append(
+                    {"role": "assistant", "content": accumulated_text}
+                )
+
+                yield {
+                    "type": "complete",
+                    "messages": updated_messages,
+                }
+                return
+
+            # Max iterations reached
+            yield {
+                "type": "error",
+                "message": "Maximum iterations reached without final response",
+            }
+
+        except Exception as e:
+            _LOGGER.error("Error processing streaming query: %s", str(e))
+            yield {
+                "type": "error",
+                "message": str(e),
+            }
 
     async def process(
         self,

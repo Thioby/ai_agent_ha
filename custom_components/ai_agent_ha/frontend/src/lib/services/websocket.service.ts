@@ -40,6 +40,85 @@ export async function sendMessage(
 }
 
 /**
+ * Send a message via WebSocket with streaming support
+ */
+export async function sendMessageStream(
+  hass: HomeAssistant,
+  message: string,
+  callbacks: {
+    onStart?: (messageId: string) => void;
+    onChunk?: (chunk: string) => void;
+    onToolCall?: (name: string, args: any) => void;
+    onToolResult?: (name: string, result: any) => void;
+    onComplete?: (result: any) => void;
+    onError?: (error: string) => void;
+  }
+): Promise<void> {
+  const session = get(sessionState);
+  if (!session.activeSessionId) {
+    throw new Error('No active session');
+  }
+
+  const provider = get(providerState);
+  const app = get(appState);
+
+  const wsParams: any = {
+    type: 'ai_agent_ha/chat/send_stream',
+    session_id: session.activeSessionId,
+    message: message,
+    provider: provider.selectedProvider,
+    debug: app.showThinking,
+  };
+
+  // Add model if selected
+  if (provider.selectedModel) {
+    wsParams.model = provider.selectedModel;
+  }
+
+  // Subscribe to events for this request
+  const unsubscribe = await hass.connection.subscribeMessage(
+    (event: any) => {
+      if (event.type === 'event') {
+        const eventData = event.event;
+        
+        switch (eventData.type) {
+          case 'stream_start':
+            callbacks.onStart?.(eventData.message_id);
+            break;
+          
+          case 'stream_chunk':
+            callbacks.onChunk?.(eventData.chunk);
+            break;
+          
+          case 'tool_call':
+            callbacks.onToolCall?.(eventData.name, eventData.args);
+            break;
+          
+          case 'tool_result':
+            callbacks.onToolResult?.(eventData.name, eventData.result);
+            break;
+          
+          case 'stream_end':
+            if (eventData.success) {
+              // Will be followed by result message
+            } else {
+              callbacks.onError?.(eventData.error || 'Unknown error');
+            }
+            break;
+        }
+      } else if (event.type === 'result') {
+        // Final result with complete messages
+        callbacks.onComplete?.(event.result);
+        if (unsubscribe) {
+          unsubscribe();
+        }
+      }
+    },
+    wsParams
+  );
+}
+
+/**
  * Subscribe to AI agent response events
  */
 export async function subscribeToEvents(

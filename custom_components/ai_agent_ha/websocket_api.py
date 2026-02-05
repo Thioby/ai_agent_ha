@@ -113,6 +113,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_delete_session)
     websocket_api.async_register_command(hass, ws_rename_session)
     websocket_api.async_register_command(hass, ws_send_message)
+    websocket_api.async_register_command(hass, ws_send_message_stream)
     websocket_api.async_register_command(hass, ws_get_available_models)
 
 
@@ -404,6 +405,262 @@ async def ws_send_message(
             "Failed to send message in session %s for user %s", session_id, user_id
         )
         connection.send_error(msg["id"], ERR_STORAGE_ERROR, "Failed to send message")
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ai_agent_ha/chat/send_stream",
+        vol.Required("session_id"): _validate_session_id,
+        vol.Required("message"): _validate_message,
+        vol.Optional("provider"): str,
+        vol.Optional("model"): str,
+        vol.Optional("debug"): vol.Coerce(bool),
+    }
+)
+@websocket_api.async_response
+async def ws_send_message_stream(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Send a chat message and stream AI response."""
+    user_id = _get_user_id(connection)
+    session_id = msg["session_id"]
+    request_id = msg["id"]
+
+    try:
+        storage = _get_storage(hass, user_id)
+
+        # Verify session exists
+        session = await storage.get_session(session_id)
+        if session is None:
+            connection.send_error(
+                request_id, ERR_SESSION_NOT_FOUND, "Session not found"
+            )
+            return
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Create and save user message
+        user_message = Message(
+            message_id=str(uuid.uuid4()),
+            session_id=session_id,
+            role="user",
+            content=msg["message"],
+            timestamp=now,
+            status="completed",
+        )
+        await storage.add_message(session_id, user_message)
+
+        # Send initial response with user message
+        connection.send_message(
+            {
+                "id": request_id,
+                "type": "event",
+                "event": {
+                    "type": "user_message",
+                    "message": asdict(user_message),
+                },
+            }
+        )
+
+        # Build conversation history for AI context
+        all_messages = await storage.get_session_messages(session_id)
+        conversation_history = [
+            {"role": m.role, "content": m.content} for m in all_messages
+        ]
+
+        # Determine provider
+        provider = msg.get("provider") or session.provider or "anthropic"
+
+        # Create assistant message (will be updated with streamed content)
+        assistant_message_id = str(uuid.uuid4())
+        assistant_message = Message(
+            message_id=assistant_message_id,
+            session_id=session_id,
+            role="assistant",
+            content="",
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            status="streaming",
+        )
+
+        # Send stream start event
+        connection.send_message(
+            {
+                "id": request_id,
+                "type": "event",
+                "event": {
+                    "type": "stream_start",
+                    "message_id": assistant_message_id,
+                },
+            }
+        )
+
+        # Stream AI response
+        accumulated_text = ""
+        stream_error = None
+
+        try:
+            if DOMAIN in hass.data and provider in hass.data[DOMAIN].get("agents", {}):
+                agent = hass.data[DOMAIN]["agents"][provider]
+
+                # Build kwargs for streaming
+                kwargs = {"hass": hass}
+                if msg.get("debug", False):
+                    kwargs["debug"] = True
+                if msg.get("model"):
+                    kwargs["model"] = msg["model"]
+
+                # Add tools for native function calling
+                from .agent_compat import AiAgentHaAgent
+
+                if isinstance(agent, AiAgentHaAgent):
+                    tools = agent._get_tools_for_provider()
+                    if tools:
+                        kwargs["tools"] = tools
+
+                    # Add RAG context if available
+                    if agent._rag_manager:
+                        rag_context = await agent._get_rag_context(msg["message"])
+                        if rag_context:
+                            kwargs["rag_context"] = rag_context
+
+                # Check if agent supports streaming
+                if hasattr(agent, "process_query_stream") or hasattr(
+                    agent._agent, "process_query_stream"
+                ):
+                    # Use streaming
+                    agent_stream = (
+                        agent._agent.process_query_stream
+                        if hasattr(agent, "_agent")
+                        else agent.process_query_stream
+                    )
+
+                    async for chunk in agent_stream(msg["message"], **kwargs):
+                        if chunk.get("type") == "text":
+                            # Text chunk
+                            content = chunk.get("content", "")
+                            accumulated_text += content
+                            connection.send_message(
+                                {
+                                    "id": request_id,
+                                    "type": "event",
+                                    "event": {
+                                        "type": "stream_chunk",
+                                        "message_id": assistant_message_id,
+                                        "chunk": content,
+                                    },
+                                }
+                            )
+                        elif chunk.get("type") == "tool_call":
+                            # Tool call notification
+                            connection.send_message(
+                                {
+                                    "id": request_id,
+                                    "type": "event",
+                                    "event": {
+                                        "type": "tool_call",
+                                        "name": chunk.get("name"),
+                                        "args": chunk.get("args", {}),
+                                    },
+                                }
+                            )
+                        elif chunk.get("type") == "tool_result":
+                            # Tool result notification
+                            connection.send_message(
+                                {
+                                    "id": request_id,
+                                    "type": "event",
+                                    "event": {
+                                        "type": "tool_result",
+                                        "name": chunk.get("name"),
+                                        "result": chunk.get("result"),
+                                    },
+                                }
+                            )
+                        elif chunk.get("type") == "error":
+                            # Error during streaming
+                            stream_error = chunk.get("message", "Unknown error")
+                            break
+                        elif chunk.get("type") == "complete":
+                            # Stream complete
+                            break
+                else:
+                    # Fallback to non-streaming
+                    _LOGGER.info("Agent doesn't support streaming, using non-streaming")
+                    result = await agent.process_query(
+                        msg["message"],
+                        provider=provider,
+                        model=msg.get("model"),
+                        debug=msg.get("debug", False),
+                        conversation_history=conversation_history,
+                    )
+
+                    if result.get("success", False):
+                        accumulated_text = result.get("answer", "")
+                        # Send as single chunk
+                        connection.send_message(
+                            {
+                                "id": request_id,
+                                "type": "event",
+                                "event": {
+                                    "type": "stream_chunk",
+                                    "message_id": assistant_message_id,
+                                    "chunk": accumulated_text,
+                                },
+                            }
+                        )
+                    else:
+                        stream_error = result.get("error", "Unknown error")
+            else:
+                stream_error = f"Provider {provider} not configured"
+
+        except Exception as ai_err:
+            _LOGGER.error("AI streaming error for session %s: %s", session_id, ai_err)
+            stream_error = str(ai_err)
+
+        # Update assistant message with final content
+        assistant_message.content = accumulated_text
+        assistant_message.status = "error" if stream_error else "completed"
+        if stream_error:
+            assistant_message.error_message = stream_error
+
+        # Save assistant message
+        await storage.add_message(session_id, assistant_message)
+
+        # Send stream end event
+        connection.send_message(
+            {
+                "id": request_id,
+                "type": "event",
+                "event": {
+                    "type": "stream_end",
+                    "message_id": assistant_message_id,
+                    "success": not stream_error,
+                    "error": stream_error,
+                },
+            }
+        )
+
+        # Send final result
+        connection.send_result(
+            request_id,
+            {
+                "user_message": asdict(user_message),
+                "assistant_message": asdict(assistant_message),
+                "success": assistant_message.status == "completed",
+            },
+        )
+
+    except ValueError:
+        connection.send_error(request_id, ERR_SESSION_NOT_FOUND, "Session not found")
+    except Exception as err:
+        _LOGGER.exception(
+            "Failed to send streaming message in session %s for user %s",
+            session_id,
+            user_id,
+        )
+        connection.send_error(request_id, ERR_STORAGE_ERROR, "Failed to send message")
 
 
 @websocket_api.websocket_command(
