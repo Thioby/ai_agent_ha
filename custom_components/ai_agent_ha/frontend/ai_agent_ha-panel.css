@@ -446,6 +446,14 @@
     line-height: 1.6;
   }
 
+  .streaming-cursor.svelte-cu3vo4 {
+    display: inline-block;
+    margin-left: 2px;
+    animation: svelte-cu3vo4-blink 1s infinite;
+    color: var(--primary-color);
+    font-weight: bold;
+  }
+
   @keyframes svelte-cu3vo4-fadeIn {
     from {
       opacity: 0;
@@ -455,6 +463,21 @@
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  @keyframes svelte-cu3vo4-blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  .message.streaming.svelte-cu3vo4 {
+    /* Optional: add subtle pulsing effect while streaming */
+    animation: svelte-cu3vo4-fadeIn 0.3s ease-out, svelte-cu3vo4-pulse 2s infinite;
+  }
+
+  @keyframes svelte-cu3vo4-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.95; }
   }
 
   @media (max-width: 768px) {

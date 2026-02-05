@@ -53,6 +53,7 @@
     try {
       if (USE_STREAMING) {
         // Use streaming API
+        console.log('[InputArea] Using STREAMING mode');
         let assistantMessageId = '';
         let streamedText = '';
 

@@ -646,7 +646,10 @@ class GeminiOAuthProvider(AIProvider):
                 **GEMINI_CODE_ASSIST_HEADERS,
             }
 
-            _LOGGER.debug("Gemini OAuth streaming request to: %s", url)
+            _LOGGER.info("Gemini OAuth STREAMING request to: %s", url)
+            _LOGGER.info(
+                "Gemini OAuth streaming enabled: trying streamGenerateContent endpoint"
+            )
 
             try:
                 async with session.post(
@@ -655,6 +658,8 @@ class GeminiOAuthProvider(AIProvider):
                     json=wrapped_payload,
                     timeout=aiohttp.ClientTimeout(total=300),
                 ) as resp:
+                    _LOGGER.info("Gemini streaming response status: %d", resp.status)
+
                     if resp.status != 200:
                         error_text = await resp.text()
                         _LOGGER.error(
@@ -669,8 +674,15 @@ class GeminiOAuthProvider(AIProvider):
                         return
 
                     # Stream response chunks
+                    _LOGGER.info("Gemini streaming: starting to read chunks")
+                    chunk_count = 0
                     line_text = ""
                     async for line in resp.content:
+                        chunk_count += 1
+                        if chunk_count == 1:
+                            _LOGGER.info("Gemini streaming: received first chunk")
+                        if chunk_count % 10 == 0:
+                            _LOGGER.debug("Gemini streaming: chunk %d", chunk_count)
                         if not line:
                             continue
 

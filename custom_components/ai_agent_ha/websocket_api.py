@@ -428,6 +428,11 @@ async def ws_send_message_stream(
     session_id = msg["session_id"]
     request_id = msg["id"]
 
+    _LOGGER.info("=" * 80)
+    _LOGGER.info("WS_SEND_MESSAGE_STREAM CALLED! Session: %s", session_id)
+    _LOGGER.info("Message: %s", msg.get("message", "")[:100])
+    _LOGGER.info("=" * 80)
+
     try:
         storage = _get_storage(hass, user_id)
 

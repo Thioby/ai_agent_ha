@@ -75,39 +75,53 @@ export async function sendMessageStream(
     wsParams.model = provider.selectedModel;
   }
 
+  console.log('[WebSocket] Sending STREAMING message with params:', wsParams);
+
   // Subscribe to events for this request
   const unsubscribe = await hass.connection.subscribeMessage(
     (event: any) => {
+      console.log('[WebSocket] Received streaming event:', event);
+      
       if (event.type === 'event') {
         const eventData = event.event;
+        console.log('[WebSocket] Event type:', eventData.type);
         
         switch (eventData.type) {
           case 'stream_start':
+            console.log('[WebSocket] Stream started, message_id:', eventData.message_id);
             callbacks.onStart?.(eventData.message_id);
             break;
           
           case 'stream_chunk':
+            console.log('[WebSocket] Stream chunk:', eventData.chunk?.substring(0, 50));
             callbacks.onChunk?.(eventData.chunk);
             break;
           
           case 'tool_call':
+            console.log('[WebSocket] Tool call:', eventData.name);
             callbacks.onToolCall?.(eventData.name, eventData.args);
             break;
           
           case 'tool_result':
+            console.log('[WebSocket] Tool result:', eventData.name);
             callbacks.onToolResult?.(eventData.name, eventData.result);
             break;
           
           case 'stream_end':
+            console.log('[WebSocket] Stream ended, success:', eventData.success);
             if (eventData.success) {
               // Will be followed by result message
             } else {
               callbacks.onError?.(eventData.error || 'Unknown error');
             }
             break;
+          
+          default:
+            console.log('[WebSocket] Unknown event type:', eventData.type);
         }
       } else if (event.type === 'result') {
         // Final result with complete messages
+        console.log('[WebSocket] Final result received');
         callbacks.onComplete?.(event.result);
         if (unsubscribe) {
           unsubscribe();

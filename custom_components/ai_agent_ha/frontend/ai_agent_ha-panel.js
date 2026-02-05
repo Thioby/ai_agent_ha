@@ -447,6 +447,14 @@ const componentCss = `
     line-height: 1.6;
   }
 
+  .streaming-cursor.svelte-cu3vo4 {
+    display: inline-block;
+    margin-left: 2px;
+    animation: svelte-cu3vo4-blink 1s infinite;
+    color: var(--primary-color);
+    font-weight: bold;
+  }
+
   @keyframes svelte-cu3vo4-fadeIn {
     from {
       opacity: 0;
@@ -456,6 +464,21 @@ const componentCss = `
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  @keyframes svelte-cu3vo4-blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  .message.streaming.svelte-cu3vo4 {
+    /* Optional: add subtle pulsing effect while streaming */
+    animation: svelte-cu3vo4-fadeIn 0.3s ease-out, svelte-cu3vo4-pulse 2s infinite;
+  }
+
+  @keyframes svelte-cu3vo4-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.95; }
   }
 
   @media (max-width: 768px) {
@@ -11296,7 +11319,7 @@ function SessionItem($$anchor, $$props) {
   pop();
 }
 delegate(["click"]);
-var root_2$3 = /* @__PURE__ */ from_html(`<div class="session-skeleton svelte-1j5qstn"><div class="skeleton-line svelte-1j5qstn"></div> <div class="skeleton-line short svelte-1j5qstn"></div> <div class="skeleton-line tiny svelte-1j5qstn"></div></div>`);
+var root_2$4 = /* @__PURE__ */ from_html(`<div class="session-skeleton svelte-1j5qstn"><div class="skeleton-line svelte-1j5qstn"></div> <div class="skeleton-line short svelte-1j5qstn"></div> <div class="skeleton-line tiny svelte-1j5qstn"></div></div>`);
 var root_4$1 = /* @__PURE__ */ from_html(`<div class="empty-sessions svelte-1j5qstn"><svg viewBox="0 0 24 24" class="icon svelte-1j5qstn"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z" class="svelte-1j5qstn"></path></svg> <p class="svelte-1j5qstn">No conversations yet</p></div>`);
 var root$b = /* @__PURE__ */ from_html(`<div class="session-list svelte-1j5qstn"><!></div>`);
 function SessionList($$anchor, $$props) {
@@ -11310,7 +11333,7 @@ function SessionList($$anchor, $$props) {
       var fragment = comment();
       var node_1 = first_child(fragment);
       each(node_1, 1, () => Array(skeletonCount), index, ($$anchor3, _2) => {
-        var div_1 = root_2$3();
+        var div_1 = root_2$4();
         append($$anchor3, div_1);
       });
       append($$anchor2, fragment);
@@ -11379,7 +11402,7 @@ function NewChatButton($$anchor, $$props) {
   $$cleanup();
 }
 delegate(["click"]);
-var root_1$4 = /* @__PURE__ */ from_html(`<div class="sidebar-overlay svelte-ou1367"></div>`);
+var root_1$5 = /* @__PURE__ */ from_html(`<div class="sidebar-overlay svelte-ou1367"></div>`);
 var root$9 = /* @__PURE__ */ from_html(`<!> <aside><div class="sidebar-header svelte-ou1367"><div class="sidebar-title svelte-ou1367"><svg viewBox="0 0 24 24" class="icon svelte-ou1367"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"></path></svg> Conversations</div> <!></div> <!></aside>`, 1);
 function Sidebar($$anchor, $$props) {
   push($$props, true);
@@ -11389,7 +11412,7 @@ function Sidebar($$anchor, $$props) {
   var node = first_child(fragment);
   {
     var consequent = ($$anchor2) => {
-      var div = root_1$4();
+      var div = root_1$5();
       div.__click = function(...$$args) {
         closeSidebar?.apply(this, $$args);
       };
@@ -11410,6 +11433,8 @@ function Sidebar($$anchor, $$props) {
   pop();
 }
 delegate(["click"]);
+var root_2$3 = /* @__PURE__ */ from_html(`<span class="streaming-cursor svelte-cu3vo4">▋</span>`);
+var root_1$4 = /* @__PURE__ */ from_html(`<!> <!>`, 1);
 var root$8 = /* @__PURE__ */ from_html(`<div><div class="message-content svelte-cu3vo4"><!></div> <!> <!></div>`);
 function MessageBubble($$anchor, $$props) {
   push($$props, true);
@@ -11419,10 +11444,20 @@ function MessageBubble($$anchor, $$props) {
   var div_1 = child(div);
   var node = child(div_1);
   {
-    var consequent = ($$anchor2) => {
-      var fragment = comment();
+    var consequent_1 = ($$anchor2) => {
+      var fragment = root_1$4();
       var node_1 = first_child(fragment);
       html$2(node_1, () => get$1(renderedContent));
+      var node_2 = sibling(node_1, 2);
+      {
+        var consequent = ($$anchor3) => {
+          var span = root_2$3();
+          append($$anchor3, span);
+        };
+        if_block(node_2, ($$render) => {
+          if ($$props.message.isStreaming) $$render(consequent);
+        });
+      }
       append($$anchor2, fragment);
     };
     var alternate = ($$anchor2) => {
@@ -11431,17 +11466,17 @@ function MessageBubble($$anchor, $$props) {
       append($$anchor2, text2);
     };
     if_block(node, ($$render) => {
-      if ($$props.message.type === "assistant") $$render(consequent);
+      if ($$props.message.type === "assistant") $$render(consequent_1);
       else $$render(alternate, false);
     });
   }
-  var node_2 = sibling(div_1, 2);
+  var node_3 = sibling(div_1, 2);
   {
-    var consequent_1 = ($$anchor2) => {
+    var consequent_2 = ($$anchor2) => {
       var fragment_2 = comment();
-      var node_3 = first_child(fragment_2);
+      var node_4 = first_child(fragment_2);
       slot(
-        node_3,
+        node_4,
         $$props,
         "automation",
         {
@@ -11452,17 +11487,17 @@ function MessageBubble($$anchor, $$props) {
       );
       append($$anchor2, fragment_2);
     };
-    if_block(node_2, ($$render) => {
-      if ($$props.message.automation) $$render(consequent_1);
+    if_block(node_3, ($$render) => {
+      if ($$props.message.automation) $$render(consequent_2);
     });
   }
-  var node_4 = sibling(node_2, 2);
+  var node_5 = sibling(node_3, 2);
   {
-    var consequent_2 = ($$anchor2) => {
+    var consequent_3 = ($$anchor2) => {
       var fragment_3 = comment();
-      var node_5 = first_child(fragment_3);
+      var node_6 = first_child(fragment_3);
       slot(
-        node_5,
+        node_6,
         $$props,
         "dashboard",
         {
@@ -11473,13 +11508,14 @@ function MessageBubble($$anchor, $$props) {
       );
       append($$anchor2, fragment_3);
     };
-    if_block(node_4, ($$render) => {
-      if ($$props.message.dashboard) $$render(consequent_2);
+    if_block(node_5, ($$render) => {
+      if ($$props.message.dashboard) $$render(consequent_3);
     });
   }
   template_effect(() => classes = set_class(div, 1, "message svelte-cu3vo4", null, classes, {
     user: $$props.message.type === "user",
-    assistant: $$props.message.type === "assistant"
+    assistant: $$props.message.type === "assistant",
+    streaming: $$props.message.isStreaming
   }));
   append($$anchor, div);
   pop();
@@ -11590,6 +11626,68 @@ async function sendMessage(hass, message) {
     wsParams.model = provider.selectedModel;
   }
   return hass.callWS(wsParams);
+}
+async function sendMessageStream(hass, message, callbacks) {
+  const session = get(sessionState);
+  if (!session.activeSessionId) {
+    throw new Error("No active session");
+  }
+  const provider = get(providerState);
+  const app = get(appState);
+  const wsParams = {
+    type: "ai_agent_ha/chat/send_stream",
+    session_id: session.activeSessionId,
+    message,
+    provider: provider.selectedProvider,
+    debug: app.showThinking
+  };
+  if (provider.selectedModel) {
+    wsParams.model = provider.selectedModel;
+  }
+  console.log("[WebSocket] Sending STREAMING message with params:", wsParams);
+  const unsubscribe = await hass.connection.subscribeMessage(
+    (event) => {
+      console.log("[WebSocket] Received streaming event:", event);
+      if (event.type === "event") {
+        const eventData = event.event;
+        console.log("[WebSocket] Event type:", eventData.type);
+        switch (eventData.type) {
+          case "stream_start":
+            console.log("[WebSocket] Stream started, message_id:", eventData.message_id);
+            callbacks.onStart?.(eventData.message_id);
+            break;
+          case "stream_chunk":
+            console.log("[WebSocket] Stream chunk:", eventData.chunk?.substring(0, 50));
+            callbacks.onChunk?.(eventData.chunk);
+            break;
+          case "tool_call":
+            console.log("[WebSocket] Tool call:", eventData.name);
+            callbacks.onToolCall?.(eventData.name, eventData.args);
+            break;
+          case "tool_result":
+            console.log("[WebSocket] Tool result:", eventData.name);
+            callbacks.onToolResult?.(eventData.name, eventData.result);
+            break;
+          case "stream_end":
+            console.log("[WebSocket] Stream ended, success:", eventData.success);
+            if (eventData.success) ;
+            else {
+              callbacks.onError?.(eventData.error || "Unknown error");
+            }
+            break;
+          default:
+            console.log("[WebSocket] Unknown event type:", eventData.type);
+        }
+      } else if (event.type === "result") {
+        console.log("[WebSocket] Final result received");
+        callbacks.onComplete?.(event.result);
+        if (unsubscribe) {
+          unsubscribe();
+        }
+      }
+    },
+    wsParams
+  );
 }
 function parseAIResponse(content) {
   const trimmedContent = content.trim();
@@ -11800,6 +11898,7 @@ var root$1 = /* @__PURE__ */ from_html(`<div class="input-container svelte-f7ebx
 function InputArea($$anchor, $$props) {
   push($$props, false);
   let messageInput = /* @__PURE__ */ mutable_source();
+  const USE_STREAMING = true;
   async function handleSend() {
     const currentAppState = get(appState);
     if (!currentAppState.hass) return;
@@ -11829,29 +11928,76 @@ function InputArea($$anchor, $$props) {
       ]
     }));
     try {
-      const result = await sendMessage(currentAppState.hass, message);
-      appState.update((s2) => ({ ...s2, isLoading: false }));
-      if (result.assistant_message) {
-        let { text: text2, automation, dashboard } = parseAIResponse(result.assistant_message.content || "");
-        const assistantMsg = {
-          id: `assistant-${Date.now()}-${Math.random()}`,
-          type: "assistant",
-          text: text2,
-          automation: automation || result.assistant_message.metadata?.automation,
-          dashboard: dashboard || result.assistant_message.metadata?.dashboard,
-          status: result.assistant_message.status,
-          error_message: result.assistant_message.error_message
-        };
-        if (result.assistant_message.status === "error") {
-          appState.update((s2) => ({ ...s2, error: result.assistant_message.error_message }));
-          assistantMsg.text = `Error: ${result.assistant_message.error_message}`;
-        }
-        appState.update((s2) => ({ ...s2, messages: [...s2.messages, assistantMsg] }));
-        const sessions = get(sessionState).sessions;
-        const activeId = get(sessionState).activeSessionId;
-        const session = sessions.find((s2) => s2.session_id === activeId);
-        const isNewConversation = session?.title === "New Conversation";
-        updateSessionInList(activeId, message, isNewConversation ? message.substring(0, 40) + (message.length > 40 ? "..." : "") : void 0);
+      if (USE_STREAMING) {
+        console.log("[InputArea] Using STREAMING mode");
+        let assistantMessageId = "";
+        let streamedText = "";
+        await sendMessageStream(currentAppState.hass, message, {
+          onStart: (messageId) => {
+            assistantMessageId = messageId;
+            appState.update((s2) => ({
+              ...s2,
+              messages: [
+                ...s2.messages,
+                {
+                  id: assistantMessageId,
+                  type: "assistant",
+                  text: "",
+                  status: "streaming",
+                  isStreaming: true
+                }
+              ]
+            }));
+          },
+          onChunk: (chunk) => {
+            streamedText += chunk;
+            appState.update((s2) => ({
+              ...s2,
+              messages: s2.messages.map((msg) => msg.id === assistantMessageId ? { ...msg, text: streamedText } : msg)
+            }));
+          },
+          onToolCall: (name, args) => {
+            console.log("Tool call:", name, args);
+          },
+          onToolResult: (name, result) => {
+            console.log("Tool result:", name, result);
+          },
+          onComplete: (result) => {
+            let { text: text2, automation, dashboard } = parseAIResponse(result.assistant_message?.content || streamedText);
+            appState.update((s2) => ({
+              ...s2,
+              isLoading: false,
+              messages: s2.messages.map((msg) => msg.id === assistantMessageId ? {
+                ...msg,
+                text: text2 || streamedText,
+                status: "completed",
+                isStreaming: false,
+                automation: automation || result.assistant_message?.metadata?.automation,
+                dashboard: dashboard || result.assistant_message?.metadata?.dashboard
+              } : msg)
+            }));
+            const sessions = get(sessionState).sessions;
+            const activeId = get(sessionState).activeSessionId;
+            const session = sessions.find((s2) => s2.session_id === activeId);
+            const isNewConversation = session?.title === "New Conversation";
+            updateSessionInList(activeId, message, isNewConversation ? message.substring(0, 40) + (message.length > 40 ? "..." : "") : void 0);
+          },
+          onError: (error) => {
+            console.error("Streaming error:", error);
+            appState.update((s2) => ({
+              ...s2,
+              isLoading: false,
+              error,
+              messages: s2.messages.map((msg) => msg.id === assistantMessageId ? {
+                ...msg,
+                text: `Error: ${error}`,
+                status: "error",
+                isStreaming: false,
+                error_message: error
+              } : msg)
+            }));
+          }
+        });
       }
     } catch (error) {
       console.error("WebSocket error:", error);
