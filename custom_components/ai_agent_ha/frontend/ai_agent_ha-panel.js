@@ -11406,8 +11406,10 @@ var root_1$5 = /* @__PURE__ */ from_html(`<div class="sidebar-overlay svelte-ou1
 var root$9 = /* @__PURE__ */ from_html(`<!> <aside><div class="sidebar-header svelte-ou1367"><div class="sidebar-title svelte-ou1367"><svg viewBox="0 0 24 24" class="icon svelte-ou1367"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"></path></svg> Conversations</div> <!></div> <!></aside>`, 1);
 function Sidebar($$anchor, $$props) {
   push($$props, true);
-  const sidebarClass = /* @__PURE__ */ user_derived(() => isMobile() ? uiState.sidebarOpen ? "sidebar open" : "sidebar hidden" : uiState.sidebarOpen ? "sidebar" : "sidebar hidden");
-  const showOverlay = /* @__PURE__ */ user_derived(() => uiState.sidebarOpen && isMobile());
+  const $uiState = () => store_get(uiState, "$uiState", $$stores);
+  const [$$stores, $$cleanup] = setup_stores();
+  const sidebarClass = /* @__PURE__ */ user_derived(() => isMobile() ? $uiState().sidebarOpen ? "sidebar open" : "sidebar hidden" : $uiState().sidebarOpen ? "sidebar" : "sidebar hidden");
+  const showOverlay = /* @__PURE__ */ user_derived(() => $uiState().sidebarOpen && isMobile());
   var fragment = root$9();
   var node = first_child(fragment);
   {
@@ -11431,6 +11433,7 @@ function Sidebar($$anchor, $$props) {
   template_effect(() => set_class(aside, 1, clsx(get$1(sidebarClass)), "svelte-ou1367"));
   append($$anchor, fragment);
   pop();
+  $$cleanup();
 }
 delegate(["click"]);
 var root_2$3 = /* @__PURE__ */ from_html(`<span class="streaming-cursor svelte-cu3vo4">▋</span>`);

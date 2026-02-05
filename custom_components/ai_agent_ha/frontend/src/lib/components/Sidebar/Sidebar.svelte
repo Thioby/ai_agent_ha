@@ -1,17 +1,16 @@
 <script lang="ts">
   import { uiState, closeSidebar } from "$lib/stores/ui"
-import { get } from 'svelte/store';
   import { isMobile } from '$lib/utils/dom';
   import SessionList from './SessionList.svelte';
   import NewChatButton from './NewChatButton.svelte';
 
   const sidebarClass = $derived(
     isMobile()
-      ? (uiState.sidebarOpen ? 'sidebar open' : 'sidebar hidden')
-      : (uiState.sidebarOpen ? 'sidebar' : 'sidebar hidden')
+      ? ($uiState.sidebarOpen ? 'sidebar open' : 'sidebar hidden')
+      : ($uiState.sidebarOpen ? 'sidebar' : 'sidebar hidden')
   );
 
-  const showOverlay = $derived(uiState.sidebarOpen && isMobile());
+  const showOverlay = $derived($uiState.sidebarOpen && isMobile());
 </script>
 
 <!-- Mobile overlay -->
