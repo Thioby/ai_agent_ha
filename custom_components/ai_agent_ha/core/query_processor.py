@@ -1,4 +1,5 @@
 """Query processor for AI agent interactions."""
+
 from __future__ import annotations
 
 import json
@@ -106,9 +107,18 @@ class QueryProcessor:
                 "These are suggestions based on your query. Use available tools "
                 "(get_entities_by_domain, get_state, etc.) to find other entities if needed."
             )
-            final_system_prompt = final_system_prompt + rag_section if final_system_prompt else rag_section
-            _LOGGER.info("RAG context added to system prompt (%d chars)", len(rag_context))
-            _LOGGER.debug("RAG context content: %s", rag_context[:500] if len(rag_context) > 500 else rag_context)
+            final_system_prompt = (
+                final_system_prompt + rag_section
+                if final_system_prompt
+                else rag_section
+            )
+            _LOGGER.info(
+                "RAG context added to system prompt (%d chars)", len(rag_context)
+            )
+            _LOGGER.debug("RAG context FULL: %s", rag_context)
+            _LOGGER.debug(
+                "Final system prompt length: %d chars", len(final_system_prompt)
+            )
 
         # Add system prompt first if we have one
         if final_system_prompt:
@@ -143,37 +153,49 @@ class QueryProcessor:
 
         # Try FunctionCallHandler for standard provider formats
         # We try strict formats first
-        
+
         # OpenAI format
-        fc_openai = FunctionCallHandler.parse_openai_response({"choices": [{"message": {"tool_calls": content.get("tool_calls")}}]}) if "tool_calls" in content else None
+        fc_openai = (
+            FunctionCallHandler.parse_openai_response(
+                {"choices": [{"message": {"tool_calls": content.get("tool_calls")}}]}
+            )
+            if "tool_calls" in content
+            else None
+        )
         if fc_openai:
             return fc_openai
 
         # Gemini format (simulated based on typical JSON output)
         if "functionCall" in content:
-            return [FunctionCall(
-                id=f"gemini_{content['functionCall'].get('name', '')}",
-                name=content['functionCall'].get('name', ''),
-                arguments=content['functionCall'].get('args', {})
-            )]
+            return [
+                FunctionCall(
+                    id=f"gemini_{content['functionCall'].get('name', '')}",
+                    name=content["functionCall"].get("name", ""),
+                    arguments=content["functionCall"].get("args", {}),
+                )
+            ]
 
         # Anthropic format: {"tool_use": {"id": ..., "name": ..., "input": ...}}
         if "tool_use" in content:
             tool_use = content["tool_use"]
-            return [FunctionCall(
-                id=tool_use.get("id", ""),
-                name=tool_use.get("name", ""),
-                arguments=tool_use.get("input", {})
-            )]
+            return [
+                FunctionCall(
+                    id=tool_use.get("id", ""),
+                    name=tool_use.get("name", ""),
+                    arguments=tool_use.get("input", {}),
+                )
+            ]
 
         # Fallback: Check for simplified/direct JSON format often used in custom implementations
         # e.g. {"function": "name", "parameters": {}} or {"name": "name", "arguments": {}}
         name = content.get("function") or content.get("name") or content.get("tool")
-        args = content.get("parameters") or content.get("arguments") or content.get("args")
+        args = (
+            content.get("parameters") or content.get("arguments") or content.get("args")
+        )
 
         if name and isinstance(name, str) and isinstance(args, dict):
-             return [FunctionCall(id=name, name=name, arguments=args)]
-             
+            return [FunctionCall(id=name, name=name, arguments=args)]
+
         # Check for list of tool calls in 'tool_calls' key directly
         tool_calls_list = content.get("tool_calls")
         if isinstance(tool_calls_list, list):
@@ -182,11 +204,15 @@ class QueryProcessor:
                 # Handle OpenAI-style inside the list
                 func = tc.get("function", {})
                 if func:
-                    result.append(FunctionCall(
-                        id=tc.get("id", ""),
-                        name=func.get("name", ""),
-                        arguments=func.get("arguments", {}) if isinstance(func.get("arguments"), dict) else json.loads(func.get("arguments", "{}"))
-                    ))
+                    result.append(
+                        FunctionCall(
+                            id=tc.get("id", ""),
+                            name=func.get("name", ""),
+                            arguments=func.get("arguments", {})
+                            if isinstance(func.get("arguments"), dict)
+                            else json.loads(func.get("arguments", "{}")),
+                        )
+                    )
             if result:
                 return result
 
@@ -231,7 +257,10 @@ class QueryProcessor:
 
         # Build the message list with RAG context
         built_messages = self._build_messages(
-            sanitized_query, messages, system_prompt=system_prompt, rag_context=rag_context
+            sanitized_query,
+            messages,
+            system_prompt=system_prompt,
+            rag_context=rag_context,
         )
 
         hass = kwargs.get("hass")
@@ -244,7 +273,9 @@ class QueryProcessor:
                 if tools is not None:
                     provider_kwargs["tools"] = tools
 
-                response_text = await self.provider.get_response(built_messages, **provider_kwargs)
+                response_text = await self.provider.get_response(
+                    built_messages, **provider_kwargs
+                )
 
                 # Detect function call
                 function_calls = self._detect_function_call(response_text)
@@ -254,11 +285,17 @@ class QueryProcessor:
                     # Build the updated message list with the response
                     updated_messages = list(built_messages)
                     # Remove system prompt from returned messages if present
-                    if system_prompt and updated_messages and updated_messages[0].get("role") == "system":
+                    if (
+                        system_prompt
+                        and updated_messages
+                        and updated_messages[0].get("role") == "system"
+                    ):
                         updated_messages = updated_messages[1:]
 
-                    updated_messages.append({"role": "assistant", "content": response_text})
-                    
+                    updated_messages.append(
+                        {"role": "assistant", "content": response_text}
+                    )
+
                     return {
                         "success": True,
                         "response": response_text,
@@ -267,32 +304,34 @@ class QueryProcessor:
 
                 # Handle function calls
                 _LOGGER.info("Detected function calls: %s", function_calls)
-                
+
                 # Append assistant's message (the tool call)
                 built_messages.append({"role": "assistant", "content": response_text})
-                
+
                 for fc in function_calls:
                     try:
                         result = await ToolRegistry.execute_tool(
-                            tool_id=fc.name,
-                            params=fc.arguments,
-                            hass=hass
+                            tool_id=fc.name, params=fc.arguments, hass=hass
                         )
                         result_str = json.dumps(result.to_dict())
-                        built_messages.append({
-                            "role": "function",
-                            "name": fc.name,
-                            "tool_use_id": fc.id,  # For Anthropic compatibility
-                            "content": result_str
-                        })
+                        built_messages.append(
+                            {
+                                "role": "function",
+                                "name": fc.name,
+                                "tool_use_id": fc.id,  # For Anthropic compatibility
+                                "content": result_str,
+                            }
+                        )
                     except Exception as e:
                         error_msg = json.dumps({"error": str(e), "tool": fc.name})
-                        built_messages.append({
-                            "role": "function",
-                            "name": fc.name,
-                            "tool_use_id": fc.id,  # For Anthropic compatibility
-                            "content": error_msg
-                        })
+                        built_messages.append(
+                            {
+                                "role": "function",
+                                "name": fc.name,
+                                "tool_use_id": fc.id,  # For Anthropic compatibility
+                                "content": error_msg,
+                            }
+                        )
 
                 current_iteration += 1
 

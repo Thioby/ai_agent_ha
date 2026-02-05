@@ -1,4 +1,5 @@
 """Gemini OAuth provider implementation using Cloud Code Assist API."""
+
 from __future__ import annotations
 
 import asyncio
@@ -48,7 +49,9 @@ def _load_gemini_oauth_models() -> tuple[list[str], str]:
         models = provider_config.get("models", [])
         model_ids = [m["id"] for m in models]
         default = next((m["id"] for m in models if m.get("default")), None)
-        return model_ids, default or (model_ids[0] if model_ids else "gemini-3-pro-preview")
+        return model_ids, default or (
+            model_ids[0] if model_ids else "gemini-3-pro-preview"
+        )
     except (FileNotFoundError, json.JSONDecodeError, KeyError, StopIteration):
         return ["gemini-3-pro-preview"], "gemini-3-pro-preview"
 
@@ -89,9 +92,7 @@ class GeminiOAuthProvider(AIProvider):
 
         # Load OAuth data from config entry
         if self._config_entry:
-            self._oauth_data = dict(
-                self._config_entry.data.get("gemini_oauth", {})
-            )
+            self._oauth_data = dict(self._config_entry.data.get("gemini_oauth", {}))
 
     @property
     def supports_tools(self) -> bool:
@@ -333,10 +334,7 @@ class GeminiOAuthProvider(AIProvider):
                 try:
                     parsed = json.loads(content)
                     if "functionCall" in parsed:
-                        contents.append({
-                            "role": "model",
-                            "parts": [parsed]
-                        })
+                        contents.append({"role": "model", "parts": [parsed]})
                         continue
                 except (ValueError, TypeError):
                     pass
@@ -348,19 +346,25 @@ class GeminiOAuthProvider(AIProvider):
                     result_data = json.loads(content)
                 except (ValueError, TypeError):
                     result_data = {"result": content}
-                contents.append({
-                    "role": "user",
-                    "parts": [{
-                        "functionResponse": {
-                            "name": func_name,
-                            "response": result_data
-                        }
-                    }]
-                })
+                contents.append(
+                    {
+                        "role": "user",
+                        "parts": [
+                            {
+                                "functionResponse": {
+                                    "name": func_name,
+                                    "response": result_data,
+                                }
+                            }
+                        ],
+                    }
+                )
 
         return contents, system_instruction
 
-    def _convert_tools(self, openai_tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _convert_tools(
+        self, openai_tools: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Convert OpenAI tool format to Gemini functionDeclarations format."""
         if not openai_tools:
             return []
@@ -369,13 +373,19 @@ class GeminiOAuthProvider(AIProvider):
         for tool in openai_tools:
             if tool.get("type") == "function":
                 func = tool.get("function", {})
-                function_declarations.append({
-                    "name": func.get("name", ""),
-                    "description": func.get("description", ""),
-                    "parameters": func.get("parameters", {}),
-                })
+                function_declarations.append(
+                    {
+                        "name": func.get("name", ""),
+                        "description": func.get("description", ""),
+                        "parameters": func.get("parameters", {}),
+                    }
+                )
 
-        return [{"functionDeclarations": function_declarations}] if function_declarations else []
+        return (
+            [{"functionDeclarations": function_declarations}]
+            if function_declarations
+            else []
+        )
 
     async def _retry_with_backoff(self, func, *args, **kwargs):
         """Retry with exponential backoff for 429 and 5xx errors."""
@@ -496,7 +506,9 @@ class GeminiOAuthProvider(AIProvider):
             # Unwrap response if it contains 'response' key (Cloud Code API)
             if "response" in data:
                 data = data["response"]
-                _LOGGER.debug("Gemini OAuth unwrapped response keys: %s", list(data.keys()))
+                _LOGGER.debug(
+                    "Gemini OAuth unwrapped response keys: %s", list(data.keys())
+                )
 
             # Check for error in response
             if "error" in data:
@@ -526,7 +538,9 @@ class GeminiOAuthProvider(AIProvider):
                     # Check for function call first
                     if "functionCall" in first_part:
                         func_name = first_part["functionCall"].get("name", "unknown")
-                        _LOGGER.debug("Gemini OAuth function call detected: %s", func_name)
+                        _LOGGER.debug(
+                            "Gemini OAuth function call detected: %s", func_name
+                        )
                         # Return JSON with functionCall for agentic loop to detect
                         return json.dumps(first_part)
                     # Otherwise return text
@@ -592,6 +606,11 @@ class GeminiOAuthProvider(AIProvider):
 
         # Convert messages to Gemini format
         gemini_contents, system_instruction = self._convert_messages(messages)
+        _LOGGER.debug(
+            "Gemini OAuth message conversion: %d contents, system_instruction: %s",
+            len(gemini_contents),
+            "YES" if system_instruction else "NO",
+        )
 
         # Build request payload
         request_payload: dict[str, Any] = {
@@ -607,6 +626,11 @@ class GeminiOAuthProvider(AIProvider):
             request_payload["systemInstruction"] = {
                 "parts": [{"text": system_instruction}]
             }
+            _LOGGER.debug(
+                "Gemini OAuth system instruction added (%d chars), preview: %s...",
+                len(system_instruction),
+                system_instruction[:200],
+            )
 
         # Add tools for function calling if provided
         tools = kwargs.get("tools")

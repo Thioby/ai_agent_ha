@@ -71,7 +71,9 @@ class GeminiOAuthEmbeddings(EmbeddingProvider):
     model: str = "text-embedding-004"
     _session: aiohttp.ClientSession | None = field(default=None, repr=False)
 
-    ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
+    ENDPOINT = (
+        "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
+    )
 
     @property
     def dimension(self) -> int:
@@ -110,8 +112,16 @@ class GeminiOAuthEmbeddings(EmbeddingProvider):
 
         return oauth_data["access_token"]
 
-    async def get_embeddings(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings using Gemini OAuth."""
+    async def get_embeddings(
+        self, texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT"
+    ) -> list[list[float]]:
+        """Generate embeddings using Gemini OAuth.
+
+        Args:
+            texts: List of texts to embed.
+            task_type: Embedding task type - "RETRIEVAL_DOCUMENT" for entities,
+                      "RETRIEVAL_QUERY" for search queries.
+        """
         if not texts:
             return []
 
@@ -128,12 +138,10 @@ class GeminiOAuthEmbeddings(EmbeddingProvider):
                     }
                     payload = {
                         "content": {"parts": [{"text": text}]},
-                        "taskType": "RETRIEVAL_DOCUMENT",
+                        "taskType": task_type,  # Use parameter instead of hardcoded
                     }
 
-                    async with session.post(
-                        url, headers=headers, json=payload
-                    ) as resp:
+                    async with session.post(url, headers=headers, json=payload) as resp:
                         if resp.status != 200:
                             error_text = await resp.text()
                             _LOGGER.error(
@@ -151,9 +159,7 @@ class GeminiOAuthEmbeddings(EmbeddingProvider):
                             raise EmbeddingError("No embedding in Gemini response")
                         embeddings.append(embedding)
 
-            _LOGGER.debug(
-                "Generated %d embeddings with Gemini OAuth", len(embeddings)
-            )
+            _LOGGER.debug("Generated %d embeddings with Gemini OAuth", len(embeddings))
             return embeddings
 
         except EmbeddingError:
@@ -170,7 +176,9 @@ class GeminiApiKeyEmbeddings(EmbeddingProvider):
     api_key: str
     model: str = "text-embedding-004"
 
-    ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
+    ENDPOINT = (
+        "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
+    )
 
     @property
     def dimension(self) -> int:
@@ -180,8 +188,16 @@ class GeminiApiKeyEmbeddings(EmbeddingProvider):
     def provider_name(self) -> str:
         return "gemini"
 
-    async def get_embeddings(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings using Gemini API key."""
+    async def get_embeddings(
+        self, texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT"
+    ) -> list[list[float]]:
+        """Generate embeddings using Gemini API key.
+
+        Args:
+            texts: List of texts to embed.
+            task_type: Embedding task type - "RETRIEVAL_DOCUMENT" for entities,
+                      "RETRIEVAL_QUERY" for search queries.
+        """
         if not texts:
             return []
 
@@ -194,12 +210,10 @@ class GeminiApiKeyEmbeddings(EmbeddingProvider):
                     headers = {"Content-Type": "application/json"}
                     payload = {
                         "content": {"parts": [{"text": text}]},
-                        "taskType": "RETRIEVAL_DOCUMENT",
+                        "taskType": task_type,  # Use parameter
                     }
 
-                    async with session.post(
-                        url, headers=headers, json=payload
-                    ) as resp:
+                    async with session.post(url, headers=headers, json=payload) as resp:
                         if resp.status != 200:
                             error_text = await resp.text()
                             _LOGGER.error(
@@ -272,9 +286,7 @@ class OpenAIEmbeddings(EmbeddingProvider):
                             resp.status,
                             error_text,
                         )
-                        raise EmbeddingError(
-                            f"OpenAI embedding failed: {resp.status}"
-                        )
+                        raise EmbeddingError(f"OpenAI embedding failed: {resp.status}")
 
                     data = await resp.json()
                     embeddings_data = data.get("data", [])
@@ -344,8 +356,8 @@ async def get_embedding_for_query(
 ) -> list[float]:
     """Get embedding for a single query text.
 
-    This is a convenience function for search queries where
-    we need a single embedding.
+    Uses RETRIEVAL_QUERY task type for Gemini embeddings to improve
+    search accuracy.
 
     Args:
         provider: The embedding provider to use.
@@ -354,7 +366,12 @@ async def get_embedding_for_query(
     Returns:
         The embedding vector for the query.
     """
-    embeddings = await provider.get_embeddings([query])
+    # Use RETRIEVAL_QUERY task type if provider supports it (Gemini)
+    kwargs = {}
+    if isinstance(provider, (GeminiOAuthEmbeddings, GeminiApiKeyEmbeddings)):
+        kwargs["task_type"] = "RETRIEVAL_QUERY"
+
+    embeddings = await provider.get_embeddings([query], **kwargs)
     if not embeddings:
         raise EmbeddingError("Failed to generate query embedding")
     return embeddings[0]

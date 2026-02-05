@@ -35,6 +35,7 @@ class QueryEngine:
         query: str,
         top_k: int = 10,
         domain_filter: str | None = None,
+        min_similarity: float | None = None,
     ) -> list[SearchResult]:
         """Search for entities semantically similar to the query.
 
@@ -42,6 +43,7 @@ class QueryEngine:
             query: The user's query text.
             top_k: Maximum number of results to return.
             domain_filter: Optional domain to filter by (e.g., "light").
+            min_similarity: Minimum cosine similarity (0-1) for results.
 
         Returns:
             List of SearchResult objects sorted by relevance.
@@ -62,6 +64,7 @@ class QueryEngine:
                 query_embedding=query_embedding,
                 n_results=top_k,
                 where=where_filter,
+                min_similarity=min_similarity,
             )
 
             _LOGGER.debug(
@@ -73,7 +76,7 @@ class QueryEngine:
                 _LOGGER.info(
                     "RAG search found entities: %s%s",
                     entity_ids,
-                    f" (+{len(results)-5} more)" if len(results) > 5 else "",
+                    f" (+{len(results) - 5} more)" if len(results) > 5 else "",
                 )
             return results
 
@@ -197,6 +200,7 @@ class QueryEngine:
         area: str | None = None,
         device_class: str | None = None,
         top_k: int = 10,
+        min_similarity: float | None = None,
     ) -> list[SearchResult]:
         """Search with additional filter criteria.
 
@@ -206,6 +210,7 @@ class QueryEngine:
             area: Filter by area name.
             device_class: Filter by device class.
             top_k: Maximum number of results.
+            min_similarity: Minimum cosine similarity (0-1) for results.
 
         Returns:
             Filtered search results.
@@ -229,6 +234,7 @@ class QueryEngine:
                 query_embedding=query_embedding,
                 n_results=top_k,
                 where=where_filter if where_filter else None,
+                min_similarity=min_similarity,
             )
 
         except Exception as e:
@@ -253,14 +259,64 @@ class QueryEngine:
 
         # Domain extraction (English + Polish)
         domain_keywords = {
-            "light": ["light", "lamp", "bulb", "światło", "światła", "lampa", "lampy", "żarówka"],
-            "switch": ["switch", "outlet", "plug", "przełącznik", "gniazdko", "wtyczka"],
-            "sensor": ["sensor", "temperature", "humidity", "motion", "czujnik", "temperatura", "wilgotność", "ruch"],
-            "cover": ["cover", "blind", "curtain", "shade", "roleta", "zasłona", "żaluzja", "brama"],
-            "climate": ["climate", "thermostat", "hvac", "ac", "heating", "klimatyzacja", "termostat", "ogrzewanie"],
+            "light": [
+                "light",
+                "lamp",
+                "bulb",
+                "światło",
+                "światła",
+                "lampa",
+                "lampy",
+                "żarówka",
+            ],
+            "switch": [
+                "switch",
+                "outlet",
+                "plug",
+                "przełącznik",
+                "gniazdko",
+                "wtyczka",
+            ],
+            "sensor": [
+                "sensor",
+                "temperature",
+                "humidity",
+                "motion",
+                "czujnik",
+                "temperatura",
+                "wilgotność",
+                "ruch",
+            ],
+            "cover": [
+                "cover",
+                "blind",
+                "curtain",
+                "shade",
+                "roleta",
+                "zasłona",
+                "żaluzja",
+                "brama",
+            ],
+            "climate": [
+                "climate",
+                "thermostat",
+                "hvac",
+                "ac",
+                "heating",
+                "klimatyzacja",
+                "termostat",
+                "ogrzewanie",
+            ],
             "lock": ["lock", "door lock", "zamek"],
             "fan": ["fan", "wentylator"],
-            "media_player": ["media", "speaker", "tv", "television", "głośnik", "telewizor"],
+            "media_player": [
+                "media",
+                "speaker",
+                "tv",
+                "television",
+                "głośnik",
+                "telewizor",
+            ],
             "camera": ["camera", "kamera"],
         }
 
@@ -271,7 +327,15 @@ class QueryEngine:
 
         # Device class extraction (English + Polish)
         device_class_keywords = {
-            "temperature": ["temperature", "temp", "temperatura", "temperatur", "stopni", "ciepło", "zimno"],
+            "temperature": [
+                "temperature",
+                "temp",
+                "temperatura",
+                "temperatur",
+                "stopni",
+                "ciepło",
+                "zimno",
+            ],
             "humidity": ["humidity", "wilgotność", "wilgoć"],
             "motion": ["motion", "movement", "ruch", "ruchu"],
             "door": ["door", "drzwi"],
@@ -287,21 +351,40 @@ class QueryEngine:
 
         # Common room/area names (English + Polish)
         area_keywords = [
-            "bedroom", "sypialnia",
-            "living room", "salon", "pokój dzienny",
-            "kitchen", "kuchnia",
-            "bathroom", "łazienka",
-            "office", "biuro", "gabinet",
-            "garage", "garaż",
-            "basement", "piwnica",
-            "attic", "strych", "poddasze",
-            "hallway", "korytarz", "przedpokój", "wiatrołap",
-            "dining room", "jadalnia",
-            "garden", "ogród",
-            "patio", "taras",
-            "backyard", "podwórko",
+            "bedroom",
+            "sypialnia",
+            "living room",
+            "salon",
+            "pokój dzienny",
+            "kitchen",
+            "kuchnia",
+            "bathroom",
+            "łazienka",
+            "office",
+            "biuro",
+            "gabinet",
+            "garage",
+            "garaż",
+            "basement",
+            "piwnica",
+            "attic",
+            "strych",
+            "poddasze",
+            "hallway",
+            "korytarz",
+            "przedpokój",
+            "wiatrołap",
+            "dining room",
+            "jadalnia",
+            "garden",
+            "ogród",
+            "patio",
+            "taras",
+            "backyard",
+            "podwórko",
             "front yard",
-            "pokój", "room",
+            "pokój",
+            "room",
         ]
 
         for area in area_keywords:

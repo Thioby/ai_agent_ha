@@ -18,6 +18,12 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# RAG search configuration
+RAG_MIN_SIMILARITY = 0.5  # Minimum cosine similarity (0-1) for search results
+# 0.5 = 50% similarity, reasonable default
+# Lower = more results (higher recall, lower precision)
+# Higher = fewer but more relevant results (lower recall, higher precision)
+
 # Re-export for external use
 __all__ = [
     "RAGManager",
@@ -43,7 +49,9 @@ class RAGManager:
     config: dict[str, Any]
     config_entry: ConfigEntry | None = None
     _store: Any | None = field(default=None, repr=False)  # SqliteStore
-    _embedding_provider: Any | None = field(default=None, repr=False)  # EmbeddingProvider
+    _embedding_provider: Any | None = field(
+        default=None, repr=False
+    )  # EmbeddingProvider
     _indexer: Any | None = field(default=None, repr=False)  # EntityIndexer
     _query_engine: Any | None = field(default=None, repr=False)  # QueryEngine
     _intent_detector: Any | None = field(default=None, repr=False)  # IntentDetector
@@ -140,9 +148,60 @@ class RAGManager:
             )
             await self._event_handlers.async_start()
 
-            # 8. Perform initial full reindex if needed
+            # 8. Check if embedding provider or configuration changed (auto-reindex)
+            provider_name = self._embedding_provider.provider_name
+            stored_provider = await self._store.get_metadata("embedding_provider")
+
+            reindex_needed = False
+
+            if stored_provider and stored_provider != provider_name:
+                _LOGGER.warning(
+                    "Embedding provider changed from %s to %s, triggering full reindex",
+                    stored_provider,
+                    provider_name,
+                )
+                reindex_needed = True
+            elif not stored_provider:
+                # First run, store current provider
+                await self._store.set_metadata("embedding_provider", provider_name)
+                _LOGGER.info("Stored embedding provider: %s", provider_name)
+
+            # Check if Gemini task type configuration changed (only for Gemini)
+            if provider_name == "gemini":
+                task_type_version = (
+                    "v2_query_document_split"  # Increment when task type logic changes
+                )
+                stored_version = await self._store.get_metadata(
+                    "gemini_task_type_version"
+                )
+
+                if stored_version and stored_version != task_type_version:
+                    _LOGGER.warning(
+                        "Gemini task type configuration changed (%s -> %s), triggering full reindex",
+                        stored_version,
+                        task_type_version,
+                    )
+                    reindex_needed = True
+                elif not stored_version:
+                    await self._store.set_metadata(
+                        "gemini_task_type_version", task_type_version
+                    )
+                    _LOGGER.info(
+                        "Stored Gemini task type version: %s", task_type_version
+                    )
+
+            # 9. Perform full reindex if needed
             doc_count = await self._store.get_document_count()
-            if doc_count == 0:
+            if reindex_needed:
+                _LOGGER.info("Reindexing all entities due to configuration change...")
+                await self._indexer.full_reindex()
+                # Update metadata after successful reindex
+                await self._store.set_metadata("embedding_provider", provider_name)
+                if provider_name == "gemini":
+                    await self._store.set_metadata(
+                        "gemini_task_type_version", "v2_query_document_split"
+                    )
+            elif doc_count == 0:
                 _LOGGER.info("No indexed entities found, performing full reindex...")
                 await self._indexer.full_reindex()
             else:
@@ -188,6 +247,48 @@ class RAGManager:
             # Extract intent from query using semantic similarity (cached embeddings)
             intent = await self._intent_detector.detect_intent(query)
 
+            # Pre-filter: Skip RAG if query clearly not HA-related
+            if not intent:
+                # Check for basic HA keywords (English + Polish)
+                query_lower = query.lower()
+                ha_keywords = [
+                    # English
+                    "light",
+                    "turn",
+                    "switch",
+                    "temperature",
+                    "sensor",
+                    "automation",
+                    "scene",
+                    "device",
+                    "home",
+                    "room",
+                    "cover",
+                    "blind",
+                    "lock",
+                    "fan",
+                    "climate",
+                    "thermostat",
+                    # Polish
+                    "światło",
+                    "światła",
+                    "włącz",
+                    "wyłącz",
+                    "temperatura",
+                    "czujnik",
+                    "urządzenie",
+                    "dom",
+                    "pokój",
+                    "roleta",
+                ]
+
+                if not any(keyword in query_lower for keyword in ha_keywords):
+                    _LOGGER.debug(
+                        "RAG pre-filter: Query doesn't appear HA-related, skipping search: %s",
+                        query[:100],
+                    )
+                    return ""
+
             # Determine which filters to apply
             # Priority: domain > device_class (they often conflict, e.g. media_player vs motion)
             # Area is always safe to combine
@@ -199,7 +300,10 @@ class RAGManager:
             if use_domain or use_device_class or use_area:
                 _LOGGER.debug(
                     "RAG using intent-based search: domain=%s, device_class=%s, area=%s (raw: %s)",
-                    use_domain, use_device_class, use_area, intent
+                    use_domain,
+                    use_device_class,
+                    use_area,
+                    intent,
                 )
                 results = await self._query_engine.search_by_criteria(
                     query=query,
@@ -207,6 +311,7 @@ class RAGManager:
                     device_class=use_device_class,
                     area=use_area,
                     top_k=top_k,
+                    min_similarity=RAG_MIN_SIMILARITY,
                 )
                 # Fallback: if no results with filters, try semantic search without filters
                 if not results:
@@ -216,11 +321,28 @@ class RAGManager:
                     results = await self._query_engine.search_entities(
                         query=query,
                         top_k=top_k,
+                        min_similarity=RAG_MIN_SIMILARITY,
                     )
             else:
                 results = await self._query_engine.search_entities(
                     query=query,
                     top_k=top_k,
+                    min_similarity=RAG_MIN_SIMILARITY,
+                )
+
+            # Early return if no results pass threshold
+            if not results:
+                _LOGGER.debug(
+                    "RAG search returned no results above similarity threshold"
+                )
+                return ""
+
+            # Log top similarity scores
+            top_similarities = [1.0 - r.distance for r in results[:3]]
+            if len(top_similarities) >= 1:
+                _LOGGER.debug(
+                    "RAG top similarity scores: %s",
+                    ", ".join(f"{s:.3f}" for s in top_similarities),
                 )
 
             # Validate entities exist and remove stale ones

@@ -105,6 +105,52 @@ class EntityIndexer:
             parts.append(f"in {area_name}")
             parts.append(area_name)  # Also add standalone for matching
 
+        # Add state for actionable entities
+        if state and domain in ("light", "switch", "cover", "lock", "fan", "climate"):
+            # Add both raw state and human-readable version
+            parts.append(state)
+
+            # Add semantic state descriptions for better matching
+            if domain == "light":
+                if state == "on":
+                    parts.append("turned on")
+                    parts.append("active")
+                    parts.append("lit")
+                elif state == "off":
+                    parts.append("turned off")
+                    parts.append("inactive")
+                    parts.append("dark")
+            elif domain in ("switch", "fan"):
+                if state == "on":
+                    parts.append("turned on")
+                    parts.append("running")
+                    parts.append("active")
+                elif state == "off":
+                    parts.append("turned off")
+                    parts.append("stopped")
+                    parts.append("inactive")
+            elif domain == "cover":
+                if state == "open":
+                    parts.append("opened")
+                    parts.append("up")
+                elif state == "closed":
+                    parts.append("closed")
+                    parts.append("down")
+                elif state == "opening":
+                    parts.append("opening")
+                elif state == "closing":
+                    parts.append("closing")
+            elif domain == "lock":
+                if state == "locked":
+                    parts.append("secured")
+                    parts.append("locked")
+                elif state == "unlocked":
+                    parts.append("unsecured")
+                    parts.append("open")
+            elif domain == "climate":
+                # Add temperature/hvac mode if available in state
+                parts.append(f"mode {state}")
+
         # Add learned category if available
         learned_cat = self._learned_categories.get(entity_id)
         if learned_cat:

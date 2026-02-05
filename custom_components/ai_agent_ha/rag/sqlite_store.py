@@ -137,6 +137,15 @@ class SqliteStore:
             ON {self.table_name}(id)
         """)
 
+        # Metadata table for tracking configuration (embedding provider, versions, etc.)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS rag_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at REAL NOT NULL
+            )
+        """)
+
         self._conn.commit()
         _LOGGER.debug("Database tables created/verified")
 
@@ -279,6 +288,7 @@ class SqliteStore:
         query_embedding: list[float],
         n_results: int = 10,
         where: dict[str, Any] | None = None,
+        min_similarity: float | None = None,
     ) -> list[SearchResult]:
         """Search for similar documents using query embedding.
 
@@ -286,6 +296,9 @@ class SqliteStore:
             query_embedding: The embedding vector to search with.
             n_results: Maximum number of results to return.
             where: Optional filter conditions for metadata (simple equality only).
+            min_similarity: Minimum cosine similarity (0-1) for results.
+                          If specified, only results with similarity >= this value are returned.
+                          E.g., 0.5 = 50% similarity. Lower values are more lenient.
 
         Returns:
             List of SearchResult objects sorted by similarity (lowest distance first).
@@ -331,9 +344,27 @@ class SqliteStore:
                     )
                 )
 
+            # Apply similarity threshold filter if specified
+            filtered_results = []
+            if min_similarity is not None:
+                for result in results_with_distance:
+                    similarity = 1.0 - result.distance
+                    if similarity >= min_similarity:
+                        filtered_results.append(result)
+
+                # Log filtering stats
+                _LOGGER.debug(
+                    "RAG similarity filter: %d/%d results above threshold %.2f",
+                    len(filtered_results),
+                    len(results_with_distance),
+                    min_similarity,
+                )
+            else:
+                filtered_results = results_with_distance
+
             # Sort by distance (ascending) and limit results
-            results_with_distance.sort(key=lambda x: x.distance)
-            search_results = results_with_distance[:n_results]
+            filtered_results.sort(key=lambda x: x.distance)
+            search_results = filtered_results[:n_results]
 
             _LOGGER.debug("Search returned %d results", len(search_results))
             return search_results
@@ -429,6 +460,52 @@ class SqliteStore:
 
         except Exception as e:
             _LOGGER.error("Failed to clear collection: %s", e)
+            raise
+
+    async def get_metadata(self, key: str) -> str | None:
+        """Get metadata value by key.
+
+        Args:
+            key: The metadata key to retrieve.
+
+        Returns:
+            The metadata value if found, None otherwise.
+        """
+        self._ensure_initialized()
+
+        try:
+            cursor = self._conn.cursor()  # type: ignore[union-attr]
+            cursor.execute("SELECT value FROM rag_metadata WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row["value"] if row else None
+        except Exception as e:
+            _LOGGER.error("Failed to get metadata for key %s: %s", key, e)
+            return None
+
+    async def set_metadata(self, key: str, value: str) -> None:
+        """Set metadata value.
+
+        Args:
+            key: The metadata key.
+            value: The metadata value to store.
+        """
+        self._ensure_initialized()
+
+        try:
+            import time
+
+            cursor = self._conn.cursor()  # type: ignore[union-attr]
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO rag_metadata (key, value, updated_at)
+                VALUES (?, ?, ?)
+                """,
+                (key, value, time.time()),
+            )
+            self._conn.commit()  # type: ignore[union-attr]
+            _LOGGER.debug("Set metadata: %s = %s", key, value)
+        except Exception as e:
+            _LOGGER.error("Failed to set metadata %s: %s", key, e)
             raise
 
     async def async_shutdown(self) -> None:

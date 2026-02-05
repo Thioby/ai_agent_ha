@@ -222,9 +222,13 @@ class AiAgentHaAgent:
 
         # Add RAG context if available
         if self._rag_manager:
+            _LOGGER.debug("Starting RAG context retrieval...")
             rag_context = await self._get_rag_context(user_query)
             if rag_context:
+                _LOGGER.debug("RAG context retrieved successfully, adding to kwargs")
                 kwargs["rag_context"] = rag_context
+            else:
+                _LOGGER.debug("RAG returned empty context, not adding to kwargs")
         else:
             _LOGGER.debug("RAG manager not configured, skipping context retrieval")
 
